@@ -77,14 +77,25 @@
       <button class="icon-btn" id="btn-arena-exit" aria-label="Выйти">←</button>
       <h2>Гонка · 2 круга по 70 степов</h2>
     </header>
+    <div class="arena-standings" id="arena-standings"></div>
     <div class="arena-track-wrap" id="arena-track-wrap">
       <div class="arena-track-box" id="arena-track-box"></div>
     </div>
+    <div class="dice-overlay" id="dice-overlay">
+      <div class="dice-face" id="dice-face">⚀</div>
+    </div>
+    <div class="arena-log" id="arena-log"></div>
     <div class="arena-footer">
       <div class="arena-turn" id="arena-turn-label">Ход: —</div>
       <button class="primary-btn full" id="btn-roll-dice">Бросить кость 🎲</button>
     </div>
   </section>
+
+  <!-- ===== SHOOT ANIMATION OVERLAY ===== -->
+  <div class="shoot-overlay" id="shoot-overlay">
+    <img class="shoot-gun-img" src="assets/icon-gun.png" alt="" />
+    <div class="shoot-overlay-text" id="shoot-overlay-text"></div>
+  </div>
 
   <!-- ===== RACE EVENT MODAL (loot / shooting / skull / finish) ===== -->
   <div class="modal-overlay" id="modal-race-event">

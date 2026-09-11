@@ -11,7 +11,7 @@
    instead and I'll tighten it.
    ========================================================= */
 
-const TRACK_STEPS = 70;
+const TRACK_STEPS = 54;
 const LAPS = 2;
 const TOTAL_DISTANCE = TRACK_STEPS * LAPS;
 
@@ -28,22 +28,28 @@ const LOOT_NAMES = { gun: "Пулемёт", dgun: "Двойной пулемёт
 const SKULL_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7 2 3 5.6 3 10c0 2.7 1.5 5 3.7 6.4L6 20h2.5l.6-2h1.8v2h2.2v-2h1.8l.6 2H18l-.7-3.6C19.5 15 21 12.7 21 10c0-4.4-4-8-9-8zM8.5 12A1.5 1.5 0 1 1 8.5 9a1.5 1.5 0 0 1 0 3zm7 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM12 13l1.2 2h-2.4z"/></svg>';
 const CRATE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><text x="12" y="16.5" font-size="12" font-weight="900" text-anchor="middle" fill="currentColor" stroke="none">?</text></svg>';
 
-/* Track geometry — a real RECTANGLE loop, drawn as a 24x13 CSS grid where only
-   the border cells are used (2*24 + 2*13 - 4 = 70 cells, exactly TRACK_STEPS).
-   Going clockwise from the top-left corner: top row, right column, bottom row
-   (right-to-left), left column — see cellForStep() for the exact mapping. */
-const GRID_COLS = 24, GRID_ROWS = 13;
+/* Track geometry — a real RECTANGLE loop, drawn as a GRID_COLSxGRID_ROWS CSS
+   grid where only the border cells are used: 2*cols + 2*rows - 4 must equal
+   TRACK_STEPS. Going clockwise from the top-left corner: top row, right
+   column, bottom row (right-to-left), left column — see cellForStep(). */
+const GRID_COLS = 19, GRID_ROWS = 10; // 2*19 + 2*10 - 4 = 54 = TRACK_STEPS
 
 function cellForStep(step) {
-  if (step <= 24) return { col: step - 1, row: 0 };
-  if (step <= 36) return { col: GRID_COLS - 1, row: step - 24 };
-  if (step <= 59) return { col: 59 - step, row: GRID_ROWS - 1 };
-  return { col: 0, row: 71 - step };
+  const topEnd = GRID_COLS;
+  const rightEnd = topEnd + (GRID_ROWS - 1);
+  const bottomEnd = rightEnd + (GRID_COLS - 1);
+  if (step <= topEnd) return { col: step - 1, row: 0 };
+  if (step <= rightEnd) return { col: GRID_COLS - 1, row: step - topEnd };
+  if (step <= bottomEnd) return { col: bottomEnd - step, row: GRID_ROWS - 1 };
+  return { col: 0, row: GRID_ROWS - 1 - (step - bottomEnd) };
 }
 function sideOfStep(step) {
-  if (step <= 24) return "top";
-  if (step <= 36) return "right";
-  if (step <= 59) return "bottom";
+  const topEnd = GRID_COLS;
+  const rightEnd = topEnd + (GRID_ROWS - 1);
+  const bottomEnd = rightEnd + (GRID_COLS - 1);
+  if (step <= topEnd) return "top";
+  if (step <= rightEnd) return "right";
+  if (step <= bottomEnd) return "bottom";
   return "left";
 }
 function stepFrac(step) {
@@ -89,6 +95,8 @@ function createRaceState(ids) {
 function runInteractiveRace(ids) {
   race = createRaceState(ids);
   goToScreen("arena");
+  document.getElementById("arena-log").innerHTML = "";
+  trackBuilt = false;
   renderArena();
   return new Promise((resolve) => {
     raceResolve = resolve;
@@ -140,6 +148,27 @@ function findAdjacentTarget(shooterId) {
   return null;
 }
 
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+function logEvent(text) {
+  const el = document.getElementById("arena-log");
+  if (!el) return;
+  const row = document.createElement("div");
+  row.className = "log-row";
+  row.textContent = text;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+}
+
+function tryRespawnSave(player) {
+  if (player.hasRespawn) {
+    player.hasRespawn = false;
+    logEvent(`${playerName(player.id)} применяет лут: Респаун — спасён от гибели`);
+    return true;
+  }
+  return false;
+}
+
 async function playOneTurn(currentId) {
   const player = race.players[currentId];
   renderArena(currentId);
@@ -156,19 +185,33 @@ async function playOneTurn(currentId) {
   await waitForDiceRoll();
   if (!race || !player.alive) return;
 
-  let roll = randInt(1, 6);
+  let baseRoll = randInt(1, 6);
+  await showDiceAnimation(baseRoll);
+  if (!race || !player.alive) return;
+
+  let roll = baseRoll;
   const nitroUsed = player.nitroPending;
-  if (nitroUsed) { roll *= 2; player.nitroPending = false; }
-  const newPos = Math.min(player.pos + roll, TOTAL_DISTANCE);
-  player.pos = newPos;
-  player.lap = newPos >= TOTAL_DISTANCE ? LAPS : Math.floor((newPos - 1) / TRACK_STEPS) + 1;
+  if (nitroUsed) {
+    roll *= 2;
+    player.nitroPending = false;
+    logEvent(`${playerName(currentId)} применяет лут: Нитро — ход удвоен до ${roll}`);
+  }
+
+  const wasLap = player.lap;
+  const targetPos = Math.min(player.pos + roll, TOTAL_DISTANCE);
+  while (player.pos < targetPos) {
+    player.pos += 1;
+    player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
+    renderArena(currentId);
+    await sleep(160);
+  }
   player.arrivedTick = ++race.turnCounter;
+  if (wasLap === 1 && player.lap === 2) logEvent(`${playerName(currentId)} проходит первый круг`);
 
-  await showRaceEvent("Кубик", `${playerName(currentId)} бросает кость: ${roll}${nitroUsed ? " (нитро ×2)" : ""}. Новая позиция: ${Math.min(newPos, TOTAL_DISTANCE)}/${TOTAL_DISTANCE}.`);
-
-  if (newPos >= TOTAL_DISTANCE) {
+  if (targetPos >= TOTAL_DISTANCE) {
     player.finished = true;
     player.finishOrder = ++race.finishCounter;
+    logEvent(`${playerName(currentId)} приходит к финишу — место ${player.finishOrder}`);
     renderArena();
     return;
   }
@@ -192,13 +235,18 @@ async function playOneTurn(currentId) {
     } else {
       const roll2 = randInt(1, 6);
       if (roll2 % 2 !== 0) {
-        player.alive = false;
-        player.eliminatedCause = { cause: "skull", causeBy: race.skull.activatorId };
-        race.players[race.skull.activatorId].kills += 1;
-        race.skull.resolved = true;
-        await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
-        renderArena();
-        return;
+        if (tryRespawnSave(player)) {
+          await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — должен был погибнуть, но респаун спасает его!`);
+        } else {
+          player.alive = false;
+          player.eliminatedCause = { cause: "skull", causeBy: race.skull.activatorId };
+          race.players[race.skull.activatorId].kills += 1;
+          race.skull.resolved = true;
+          logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
+          await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
+          renderArena();
+          return;
+        }
       } else {
         await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — уцелел. Череп остаётся активным.`);
       }
@@ -217,10 +265,6 @@ async function playOneTurn(currentId) {
 
 async function grantLoot(playerId, code) {
   const player = race.players[playerId];
-  const names = {
-    gun: "Пулемёт", dgun: "Двойной пулемёт", shield: "Щит", dshield: "Двойной щит",
-    nitro: "Нитро", respawn: "Респаун", joker: "Джокер",
-  };
   if (code === "gun") { player.gunCharges += 1; player.lootHeld.push("gun"); }
   else if (code === "dgun") { player.gunCharges += 2; player.lootHeld.push("dgun"); }
   else if (code === "shield") { player.shieldCharges += 1; player.lootHeld.push("shield"); }
@@ -228,18 +272,33 @@ async function grantLoot(playerId, code) {
   else if (code === "nitro") { player.nitroPending = true; player.lootHeld.push("nitro"); }
   else if (code === "respawn") { player.hasRespawn = true; player.lootHeld.push("respawn"); }
   else if (code === "joker") {
+    logEvent(`${playerName(playerId)} подбирает лут: Джокер`);
     const roll = randInt(1, 6);
     if (roll % 2 !== 0) {
-      player.alive = false;
-      player.eliminatedCause = { cause: "joker", causeBy: null };
-      await showRaceEvent("Джокер", `${playerName(playerId)} поднимает джокера и бросает кость: ${roll} — уничтожен джокером!`);
-      return;
+      if (tryRespawnSave(player)) {
+        await showRaceEvent("Джокер", `${playerName(playerId)} бросает кость: ${roll} — должен был погибнуть, но респаун спасает его!`);
+      } else {
+        player.alive = false;
+        player.eliminatedCause = { cause: "joker", causeBy: null };
+        logEvent(`${playerName(playerId)} погиб: уничтожен Джокером`);
+        await showRaceEvent("Джокер", `${playerName(playerId)} бросает кость: ${roll} — уничтожен джокером!`);
+      }
     } else {
-      await showRaceEvent("Джокер", `${playerName(playerId)} поднимает джокера и бросает кость: ${roll} — уцелел.`);
-      return;
+      await showRaceEvent("Джокер", `${playerName(playerId)} бросает кость: ${roll} — уцелел.`);
     }
+    return;
   }
-  await showRaceEvent("Лут", `${playerName(playerId)} подбирает: ${names[code]}.`);
+  logEvent(`${playerName(playerId)} подбирает лут: ${LOOT_NAMES[code]}`);
+  await showRaceEvent("Лут", `${playerName(playerId)} подбирает: ${LOOT_NAMES[code]}.`);
+}
+
+function showShootAnimation(shooterId, targetId) {
+  const overlay = document.getElementById("shoot-overlay");
+  document.getElementById("shoot-overlay-text").textContent = `${playerName(shooterId)} стреляет в ${playerName(targetId)}`;
+  overlay.classList.add("active");
+  return new Promise((resolve) => {
+    setTimeout(() => { overlay.classList.remove("active"); resolve(); }, 2000);
+  });
 }
 
 async function performShoot(shooterId, targetId) {
@@ -247,21 +306,30 @@ async function performShoot(shooterId, targetId) {
   const target = race.players[targetId];
   await showRaceEvent("Стрельба обязательна", `${playerName(shooterId)} видит ${playerName(targetId)} прямо впереди и обязан открыть огонь.`, "Стрелять");
 
+  logEvent(`${playerName(shooterId)} применяет лут: Пулемёт (стреляет в ${playerName(targetId)})`);
+  await showShootAnimation(shooterId, targetId);
+
   const roll = randInt(1, 6);
   let penetrates;
   if (target.shieldCharges > 0) {
     penetrates = roll === 1 || roll === 6;
     target.shieldCharges -= 1;
+    logEvent(`${playerName(targetId)} применяет лут: Щит`);
   } else {
     penetrates = roll % 2 !== 0;
   }
   shooter.gunCharges -= 1;
 
   if (penetrates) {
-    target.alive = false;
-    target.eliminatedCause = { cause: "gun", causeBy: shooterId };
-    shooter.kills += 1;
-    await showRaceEvent("Стрельба", `Кость: ${roll}. Броня пробита — ${playerName(targetId)} уничтожен пулемётом (${playerName(shooterId)}).`);
+    if (tryRespawnSave(target)) {
+      await showRaceEvent("Стрельба", `Кость: ${roll}. Броня пробита, но респаун спасает ${playerName(targetId)}!`);
+    } else {
+      target.alive = false;
+      target.eliminatedCause = { cause: "gun", causeBy: shooterId };
+      shooter.kills += 1;
+      logEvent(`${playerName(targetId)} погиб: уничтожен пулемётом (${playerName(shooterId)})`);
+      await showRaceEvent("Стрельба", `Кость: ${roll}. Броня пробита — ${playerName(targetId)} уничтожен пулемётом (${playerName(shooterId)}).`);
+    }
   } else {
     await showRaceEvent("Стрельба", `Кость: ${roll}. ${playerName(targetId)} уцелел.`);
   }
@@ -365,6 +433,66 @@ function buildTrackMarkers(overlay) {
   overlay.appendChild(skullEl);
 }
 
+function standingCompare(a, b) {
+  const pa = race.players[a], pb = race.players[b];
+  if (pa.finished && pb.finished) return pa.finishOrder - pb.finishOrder;
+  if (pa.finished) return -1;
+  if (pb.finished) return 1;
+  if (pa.alive && pb.alive) return pb.pos - pa.pos;
+  if (pa.alive) return -1;
+  if (pb.alive) return 1;
+  return pb.pos - pa.pos;
+}
+
+function renderStandings() {
+  const bar = document.getElementById("arena-standings");
+  bar.innerHTML = "";
+  const ranked = race.order.slice().sort(standingCompare);
+  ranked.forEach((id, i) => {
+    const p = race.players[id];
+    const card = document.createElement("div");
+    card.className = "standing-card" + (!p.alive ? " eliminated" : "") + (p.finished ? " finished" : "");
+
+    const rank = document.createElement("span");
+    rank.className = "s-rank";
+    rank.textContent = i + 1;
+
+    const img = document.createElement("img");
+    const pl = findPlayer(id);
+    if (pl) img.src = playerPhotoUrl(pl);
+
+    const info = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "s-name";
+    name.textContent = playerName(id);
+    const sub = document.createElement("div");
+    sub.className = "s-sub";
+    sub.textContent = p.finished ? `Финиш ${p.finishOrder}` : !p.alive ? "Выбыл" : `${p.pos}/${TOTAL_DISTANCE}`;
+    info.appendChild(name); info.appendChild(sub);
+
+    card.appendChild(rank); card.appendChild(img); card.appendChild(info);
+    bar.appendChild(card);
+  });
+}
+
+function showDiceAnimation(finalRoll) {
+  const faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+  const overlay = document.getElementById("dice-overlay");
+  const face = document.getElementById("dice-face");
+  overlay.classList.add("active");
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const spin = setInterval(() => {
+      face.textContent = faces[Math.floor(Math.random() * 6)];
+      if (Date.now() - start > 550) {
+        clearInterval(spin);
+        face.textContent = faces[finalRoll - 1];
+        setTimeout(() => { overlay.classList.remove("active"); resolve(); }, 500);
+      }
+    }, 70);
+  });
+}
+
 function physicalStepOf(p) {
   if (p.finished) return TRACK_STEPS;
   if (p.pos <= 0) return 1;
@@ -374,6 +502,7 @@ function physicalStepOf(p) {
 const SIDE_OFFSET = { top: [0, 1], bottom: [0, -1], left: [1, 0], right: [-1, 0] };
 
 function renderArena(currentTurnId) {
+  renderStandings();
   if (!trackBuilt) buildTrackGrid();
   sizeTrackBox();
   const overlay = document.getElementById("arena-overlay");
@@ -411,7 +540,7 @@ function renderArena(currentTurnId) {
 
       const lapEl = document.createElement("div");
       lapEl.className = "token-lap";
-      lapEl.textContent = p.finished ? "🏁" : p.lap;
+      lapEl.textContent = race.order.indexOf(id) + 1;
       token.appendChild(lapEl);
 
       const nameEl = document.createElement("div");

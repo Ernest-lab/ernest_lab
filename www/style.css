@@ -451,7 +451,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   overflow: hidden;
   background: #0c0b0a;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 4px;
 }
@@ -552,6 +552,111 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 
 .arena-footer { padding: 14px 20px; border-top: 1px solid #1a1714; flex-shrink: 0; }
 .arena-turn { text-align: center; font-size: 13px; color: var(--muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+/* ---------- LIVE STANDINGS STRIP ---------- */
+.arena-standings {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  border-bottom: 1px solid #1a1714;
+  background: #14120f;
+}
+.standing-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid #1a1714;
+  border-radius: var(--radius);
+  padding: 5px 9px 5px 6px;
+  flex-shrink: 0;
+  transition: order 0.3s ease;
+}
+.standing-card .s-rank {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--accent);
+  min-width: 14px;
+  text-align: center;
+}
+.standing-card img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 1px solid var(--steel-light); }
+.standing-card .s-name { font-size: 11px; font-weight: 700; white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.standing-card .s-sub { font-size: 9px; color: var(--muted); }
+.standing-card.eliminated { opacity: 0.4; }
+.standing-card.finished .s-rank { color: #6fd66f; }
+
+/* ---------- DICE ROLL OVERLAY ---------- */
+.dice-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 5, 4, 0.6);
+  z-index: 250;
+  pointer-events: none;
+}
+.dice-overlay.active { display: flex; }
+.dice-face {
+  font-size: 130px;
+  line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(226, 121, 46, 0.75), 0 4px 10px rgba(0,0,0,0.6);
+}
+
+/* ---------- EVENT LOG ---------- */
+.arena-log {
+  flex-shrink: 0;
+  max-height: 96px;
+  overflow-y: auto;
+  background: #14120f;
+  border-top: 1px solid #1a1714;
+  padding: 6px 14px;
+  font-size: 11px;
+}
+.log-row {
+  padding: 3px 0;
+  color: var(--muted);
+  border-bottom: 1px solid #1f1c17;
+}
+.log-row:last-child { border-bottom: none; color: var(--text); }
+
+/* ---------- SHOOT ANIMATION OVERLAY ---------- */
+.shoot-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(60, 8, 8, 0.45);
+  z-index: 260;
+  pointer-events: none;
+}
+.shoot-overlay.active { display: flex; }
+.shoot-gun-img {
+  width: 140px;
+  animation: shoot-shake 0.15s infinite alternate, shoot-flash 0.3s infinite alternate;
+}
+.shoot-overlay-text {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--danger-bright);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-shadow: 0 0 12px rgba(255,77,77,0.8);
+}
+@keyframes shoot-shake {
+  from { transform: translate(-3px, 0) rotate(-2deg); }
+  to { transform: translate(3px, 0) rotate(2deg); }
+}
+@keyframes shoot-flash {
+  from { filter: drop-shadow(0 0 6px #ff4d4d); }
+  to { filter: drop-shadow(0 0 22px #ff4d4d); }
+}
 
 .race-result-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a1714; font-size: 14px; }
 .race-result-row:last-child { border-bottom: none; }
