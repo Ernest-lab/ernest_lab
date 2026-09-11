@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Race Tournament</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== TOASTS ===== -->
+  <div id="toast-layer"></div>
+
+  <!-- ===== MAIN MENU ===== -->
+  <section id="screen-menu" class="screen active">
+    <div class="menu-wrap">
+      <h1 class="menu-title">КРОВАВАЯ СТАЛЬ<span>СМЕРТЕЛЬНЫЕ ГОНКИ</span></h1>
+      <nav class="menu-list">
+        <button class="menu-btn" data-nav="create-player">
+          <span class="menu-btn-label">Создать игрока</span>
+          <span class="menu-btn-count" id="count-players">0</span>
+        </button>
+        <button class="menu-btn" data-nav="tournament" data-requires="48">
+          <span class="menu-btn-label">Турнир</span>
+          <span class="menu-btn-sub">нужно 48 игроков</span>
+        </button>
+        <button class="menu-btn" data-nav="race" data-requires="2">
+          <span class="menu-btn-label">Разовая гонка</span>
+          <span class="menu-btn-sub">нужно 2 игрока</span>
+        </button>
+      </nav>
+    </div>
+  </section>
+
+  <!-- ===== CREATE PLAYER SCREEN ===== -->
+  <section id="screen-create-player" class="screen">
+    <header class="screen-header">
+      <button class="icon-btn" data-nav="menu" aria-label="Назад">←</button>
+      <h2>Создать игрока</h2>
+      <button class="primary-btn" id="btn-open-create-player">+ Создать игрока</button>
+    </header>
+    <div class="cards-scroll" id="players-grid">
+      <p class="empty-hint" id="players-empty-hint">Пока нет ни одного игрока. Нажмите «Создать игрока».</p>
+    </div>
+  </section>
+
+  <!-- ===== TOURNAMENT SCREEN ===== -->
+  <section id="screen-tournament" class="screen">
+    <header class="screen-header">
+      <button class="icon-btn" id="btn-tournament-back" aria-label="Назад">←</button>
+      <h2 id="tournament-header-title">Турнир</h2>
+      <button class="primary-btn" id="btn-open-create-tournament">+ Создать турнир</button>
+    </header>
+
+    <div class="cards-scroll" id="tournament-list-view">
+      <p class="empty-hint" id="tournaments-empty-hint">Пока нет ни одного турнира. Нажмите «Создать турнир».</p>
+    </div>
+
+    <div class="bracket-scroll" id="tournament-bracket-view" hidden></div>
+  </section>
+
+  <!-- ===== SINGLE RACE SCREEN ===== -->
+  <section id="screen-race" class="screen">
+    <header class="screen-header">
+      <button class="icon-btn" data-nav="menu" aria-label="Назад">←</button>
+      <h2>Разовая гонка</h2>
+    </header>
+    <div class="stub-content">
+      <p>Соберите от 2 до 8 игроков — результат покажется всплывающим окном и никуда не сохраняется.</p>
+      <button class="primary-btn" id="btn-assemble-race">Собрать гонку</button>
+    </div>
+  </section>
+
+  <!-- ===== RACE ARENA SCREEN ===== -->
+  <section id="screen-arena" class="screen">
+    <header class="screen-header">
+      <button class="icon-btn" id="btn-arena-exit" aria-label="Выйти">←</button>
+      <h2>Гонка · 2 круга по 70 степов</h2>
+    </header>
+    <div class="arena-track-wrap" id="arena-track-wrap">
+      <div class="arena-track-box" id="arena-track-box"></div>
+    </div>
+    <div class="arena-footer">
+      <div class="arena-turn" id="arena-turn-label">Ход: —</div>
+      <button class="primary-btn full" id="btn-roll-dice">Бросить кость 🎲</button>
+    </div>
+  </section>
+
+  <!-- ===== RACE EVENT MODAL (loot / shooting / skull / finish) ===== -->
+  <div class="modal-overlay" id="modal-race-event">
+    <div class="modal-card small">
+      <h3 id="race-event-title">Событие</h3>
+      <p id="race-event-text"></p>
+      <button class="primary-btn full" id="btn-race-event-ok">Продолжить</button>
+    </div>
+  </div>
+
+  <!-- ===== RACE RESULT MODAL ===== -->
+  <div class="modal-overlay" id="modal-race-result">
+    <div class="modal-card">
+      <button class="modal-close" id="btn-close-race-result" aria-label="Закрыть">✕</button>
+      <h3>Результат гонки</h3>
+      <div id="race-result-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== PLAYER CREATE/EDIT MODAL ===== -->
+  <div class="modal-overlay" id="modal-player">
+    <div class="modal-card">
+      <button class="modal-close" id="btn-close-player-modal" aria-label="Закрыть">✕</button>
+      <h3 id="player-modal-title">Новый игрок</h3>
+
+      <button class="photo-picker" id="photo-picker" type="button">
+        <img id="photo-preview" alt="" hidden />
+        <span id="photo-placeholder">Выбрать фото</span>
+      </button>
+      <input type="file" id="photo-input" accept="image/*" hidden />
+
+      <div class="field">
+        <input type="text" id="player-name-input" maxlength="25" placeholder="Ник игрока" autocomplete="off" />
+        <span class="field-count" id="name-count">0/25</span>
+      </div>
+
+      <button class="primary-btn full" id="btn-confirm-player">Создать игрока</button>
+    </div>
+  </div>
+
+  <!-- ===== TOURNAMENT CREATE MODAL ===== -->
+  <div class="modal-overlay" id="modal-tournament">
+    <div class="modal-card">
+      <button class="modal-close" id="btn-close-tournament-modal" aria-label="Закрыть">✕</button>
+      <h3>Новый турнир</h3>
+
+      <div class="field">
+        <input type="text" id="tournament-name-input" maxlength="15" placeholder="Название турнира" autocomplete="off" />
+        <span class="field-count" id="tournament-name-count">0/15</span>
+      </div>
+
+      <button class="ghost-btn full" id="btn-open-pick-players" type="button">Выбрать игроков</button>
+      <p class="picked-hint" id="picked-players-hint">Выбрано: 0/48</p>
+
+      <button class="primary-btn full" id="btn-confirm-tournament">Создать турнир</button>
+    </div>
+  </div>
+
+  <!-- ===== PLAYER PICKER MODAL (for tournament creation) ===== -->
+  <div class="modal-overlay" id="modal-pick-players">
+    <div class="modal-card wide">
+      <button class="modal-close" id="btn-close-pick-players" aria-label="Закрыть">✕</button>
+      <h3>Выберите 48 игроков</h3>
+      <div class="cards-scroll picker-grid" id="pick-players-grid"></div>
+      <p class="picked-hint" id="pick-players-count">0/48</p>
+      <button class="primary-btn full" id="btn-confirm-pick-players" disabled>Подтвердить</button>
+    </div>
+  </div>
+
+  <!-- ===== GENERIC CONFIRM MODAL ===== -->
+  <div class="modal-overlay" id="modal-confirm">
+    <div class="modal-card small">
+      <p id="confirm-text">Вы уверены?</p>
+      <div class="confirm-row">
+        <button class="ghost-btn" id="btn-confirm-cancel">Отменить</button>
+        <button class="danger-btn" id="btn-confirm-ok">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="picker.js"></script>
+  <script src="tournament.js"></script>
+  <script src="race.js"></script>
+</body>
+</html>

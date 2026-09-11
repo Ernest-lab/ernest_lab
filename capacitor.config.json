@@ -1,0 +1,11 @@
+{
+  "appId": "com.racetournament.app",
+  "appName": "Race Tournament",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
