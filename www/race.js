@@ -84,7 +84,7 @@ function createRaceState(ids) {
   ids.forEach((id, i) => {
     playersState[id] = {
       id, pos: 0, lap: 1, alive: true, finished: false, finishOrder: null,
-      lootHeld: [], gunCharges: 0, shieldCharges: 0, nitroPending: false,
+      lootHeld: [], gunCharges: 0, pendingGun: 0, shieldCharges: 0, nitroPending: false,
       hasRespawn: false, kills: 0, eliminatedCause: null, arrivedTick: i,
     };
   });
@@ -190,8 +190,7 @@ async function resolveSkullHazard(currentId, player) {
     await showRaceEvent(
       "Череп активирован!",
       `${playerName(currentId)} проезжает через череп — он загорается красным и теперь опасен для всех, кто проедет по нему следующим.`,
-      "Понятно",
-      { iconSrc: SKULL_ICON_URI, glow: true }
+      "Понятно"
     );
     return false;
   }
@@ -223,6 +222,10 @@ async function resolveSkullHazard(currentId, player) {
 
 async function playOneTurn(currentId) {
   const player = race.players[currentId];
+  if (player.pendingGun > 0) {
+    player.gunCharges += player.pendingGun;
+    player.pendingGun = 0;
+  }
   renderArena(currentId);
 
   // mandatory shooting before the roll
@@ -297,8 +300,8 @@ async function playOneTurn(currentId) {
 
 async function grantLoot(playerId, code) {
   const player = race.players[playerId];
-  if (code === "gun") { player.gunCharges += 1; player.lootHeld.push("gun"); }
-  else if (code === "dgun") { player.gunCharges += 2; player.lootHeld.push("dgun"); }
+  if (code === "gun") { player.pendingGun += 1; player.lootHeld.push("gun"); }
+  else if (code === "dgun") { player.pendingGun += 2; player.lootHeld.push("dgun"); }
   else if (code === "shield") { player.shieldCharges += 1; player.lootHeld.push("shield"); }
   else if (code === "dshield") { player.shieldCharges += 2; player.lootHeld.push("dshield"); }
   else if (code === "nitro") { player.nitroPending = true; player.lootHeld.push("nitro"); }
@@ -342,12 +345,15 @@ function showShootAnimation(shooterId, targetId) {
 async function performShoot(shooterId, targetId) {
   const shooter = race.players[shooterId];
   const target = race.players[targetId];
-  await showRaceEvent("Стрельба обязательна", `${playerName(shooterId)} видит ${playerName(targetId)} прямо впереди и обязан открыть огонь.`, "Стрелять");
 
   logEvent(`${playerName(shooterId)} применяет лут: Пулемёт (стреляет в ${playerName(targetId)})`);
   await showShootAnimation(shooterId, targetId);
 
+  await showRaceEvent("Стрельба обязательна", `${playerName(shooterId)} видит ${playerName(targetId)} прямо впереди и обязан открыть огонь.`, "Стрелять");
+
   const roll = randInt(1, 6);
+  await showDiceAnimation(roll);
+
   let penetrates;
   if (target.shieldCharges > 0) {
     penetrates = roll === 1 || roll === 6;
