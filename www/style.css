@@ -486,12 +486,20 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 .arena-skull-marker {
   position: absolute;
   transform: translate(-50%, -50%);
-  color: var(--muted);
-  opacity: 0.5;
+  color: #4a453d;
+  opacity: 0.7;
   z-index: 2;
 }
-.arena-skull-marker.active { color: var(--danger-bright); opacity: 1; filter: drop-shadow(0 0 5px #ff4d4d); }
+.arena-skull-marker.active {
+  color: var(--danger-bright);
+  opacity: 1;
+  animation: skull-pulse 1.6s ease-in-out infinite;
+}
 .arena-skull-marker.resolved { display: none; }
+@keyframes skull-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px #ff4d4d); transform: translate(-50%, -50%) scale(1); }
+  50% { filter: drop-shadow(0 0 14px #ff4d4d); transform: translate(-50%, -50%) scale(1.15); }
+}
 
 .arena-token {
   position: absolute;
@@ -499,7 +507,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  transition: left 0.4s ease, top 0.4s ease, width 0.3s ease, height 0.3s ease;
+  transition: left 0.8s ease, top 0.8s ease, width 0.6s ease, height 0.6s ease;
   z-index: 3;
 }
 .arena-token img {
@@ -639,7 +647,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 .shoot-overlay.active { display: flex; }
 .shoot-gun-img {
   width: 140px;
-  animation: shoot-shake 0.15s infinite alternate, shoot-flash 0.3s infinite alternate;
+  animation: shoot-shake 0.3s infinite alternate, shoot-flash 0.6s infinite alternate;
 }
 .shoot-overlay-text {
   font-size: 18px;
@@ -658,6 +666,63 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   to { filter: drop-shadow(0 0 22px #ff4d4d); }
 }
 
-.race-result-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a1714; font-size: 14px; }
+/* ---------- RACE-EVENT MODAL ICON ---------- */
+.race-event-icon {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  object-fit: contain;
+}
+.race-event-icon.icon-glow-hazard {
+  width: 84px;
+  height: 84px;
+  animation: hazard-glow 1.8s ease-in-out infinite;
+}
+@keyframes hazard-glow {
+  0%, 100% { filter: drop-shadow(0 0 6px #ff4d4d); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 22px #ff4d4d); transform: scale(1.12); }
+}
+
+/* ---------- TRACK FX: explosion + nitro exhaust ---------- */
+.fx-explosion {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff2c0 0%, #ff8a3d 35%, #ff2d2d 62%, transparent 78%);
+  animation: fx-explode 1s ease-out forwards;
+  z-index: 6;
+  pointer-events: none;
+}
+@keyframes fx-explode {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); }
+}
+
+.fx-nitro {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 6;
+}
+.fx-nitro::before, .fx-nitro::after {
+  content: "";
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 38%; height: 38%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #cdeaff 0%, #4aa8ff 55%, transparent 78%);
+  animation: fx-nitro-puff 1s ease-out forwards;
+}
+.fx-nitro::after { animation-delay: 0.2s; }
+@keyframes fx-nitro-puff {
+  0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.4); }
+  100% { opacity: 0; transform: translate(-170%, -50%) scale(1.4); }
+}
+
+.race-result-row { padding: 8px 0; border-bottom: 1px solid #1a1714; font-size: 14px; }
 .race-result-row:last-child { border-bottom: none; }
 .race-result-row.eliminated { color: var(--danger-bright); }
+.rr-main { display: flex; justify-content: space-between; }
+.rr-breakdown { margin-top: 3px; font-size: 11px; color: var(--muted); text-align: right; }

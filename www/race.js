@@ -27,6 +27,16 @@ const LOOT_ICONS = {
 const LOOT_NAMES = { gun: "Пулемёт", dgun: "Двойной пулемёт", shield: "Щит", dshield: "Двойной щит", nitro: "Нитро", respawn: "Респаун", joker: "Джокер" };
 const SKULL_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7 2 3 5.6 3 10c0 2.7 1.5 5 3.7 6.4L6 20h2.5l.6-2h1.8v2h2.2v-2h1.8l.6 2H18l-.7-3.6C19.5 15 21 12.7 21 10c0-4.4-4-8-9-8zM8.5 12A1.5 1.5 0 1 1 8.5 9a1.5 1.5 0 0 1 0 3zm7 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM12 13l1.2 2h-2.4z"/></svg>';
 const CRATE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><text x="12" y="16.5" font-size="12" font-weight="900" text-anchor="middle" fill="currentColor" stroke="none">?</text></svg>';
+const SKULL_ICON_URI = "data:image/svg+xml;utf8," + encodeURIComponent(SKULL_SVG.replace(/currentColor/g, "#ff4d4d"));
+
+/* Timing — every animation is 2x slower than a "normal" pace, per request. */
+const STEP_ANIM_MS = 320;
+const DICE_SPIN_TICK_MS = 140;
+const DICE_SPIN_TOTAL_MS = 1100;
+const DICE_SETTLE_MS = 1000;
+const SHOOT_ANIM_MS = 4000;
+const EXPLOSION_MS = 1000;
+const NITRO_FX_MS = 1000;
 
 /* Track geometry — a real RECTANGLE loop, drawn as a GRID_COLSxGRID_ROWS CSS
    grid where only the border cells are used: 2*cols + 2*rows - 4 must equal
@@ -195,6 +205,7 @@ async function playOneTurn(currentId) {
     roll *= 2;
     player.nitroPending = false;
     logEvent(`${playerName(currentId)} применяет лут: Нитро — ход удвоен до ${roll}`);
+    await showNitroExhaust(currentId);
   }
 
   const wasLap = player.lap;
@@ -203,7 +214,7 @@ async function playOneTurn(currentId) {
     player.pos += 1;
     player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
     renderArena(currentId);
-    await sleep(160);
+    await sleep(STEP_ANIM_MS);
   }
   player.arrivedTick = ++race.turnCounter;
   if (wasLap === 1 && player.lap === 2) logEvent(`${playerName(currentId)} проходит первый круг`);
@@ -226,29 +237,41 @@ async function playOneTurn(currentId) {
     if (!player.alive) { renderArena(); return; }
   }
 
-  // skull
+  // skull — first arrival lights it up (red, active); everyone after that
+  // must roll the same 50/50 hazard as the Joker until someone finally dies
   if (physicalStep === race.skull.step && !race.skull.resolved) {
     if (!race.skull.active) {
       race.skull.active = true;
       race.skull.activatorId = currentId;
-      await showRaceEvent("Череп", `${playerName(currentId)} активирует череп! Он загорается красным — теперь опасен для остальных.`);
+      renderArena(currentId);
+      await showRaceEvent(
+        "Череп активирован!",
+        `${playerName(currentId)} наезжает на череп — он загорается красным и теперь опасен для всех, кто проедет по нему следующим.`,
+        "Понятно",
+        { iconSrc: SKULL_ICON_URI, glow: true }
+      );
     } else {
-      const roll2 = randInt(1, 6);
-      if (roll2 % 2 !== 0) {
+      const { roll: roll2, survived } = await resolveHazardRoll(
+        currentId, "Череп!",
+        SKULL_ICON_URI,
+        `${playerName(currentId)} наезжает на активный череп. Шанс проехать — 50 на 50.`
+      );
+      if (!survived) {
         if (tryRespawnSave(player)) {
-          await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — должен был погибнуть, но респаун спасает его!`);
+          await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} должен был погибнуть, но респаун спасает его!`);
         } else {
           player.alive = false;
           player.eliminatedCause = { cause: "skull", causeBy: race.skull.activatorId };
           race.players[race.skull.activatorId].kills += 1;
           race.skull.resolved = true;
           logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
-          await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
+          await showExplosion(currentId);
+          await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
           renderArena();
           return;
         }
       } else {
-        await showRaceEvent("Череп", `${playerName(currentId)} бросает кость: ${roll2} — уцелел. Череп остаётся активным.`);
+        await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} уцелел. Череп остаётся активным для следующих игроков.`);
       }
     }
   }
@@ -273,23 +296,28 @@ async function grantLoot(playerId, code) {
   else if (code === "respawn") { player.hasRespawn = true; player.lootHeld.push("respawn"); }
   else if (code === "joker") {
     logEvent(`${playerName(playerId)} подбирает лут: Джокер`);
-    const roll = randInt(1, 6);
-    if (roll % 2 !== 0) {
+    const { roll, survived } = await resolveHazardRoll(
+      playerId, "Джокер!",
+      "assets/icon-joker.png",
+      `${playerName(playerId)} поднимает джокера. Шанс уцелеть — 50 на 50.`
+    );
+    if (!survived) {
       if (tryRespawnSave(player)) {
-        await showRaceEvent("Джокер", `${playerName(playerId)} бросает кость: ${roll} — должен был погибнуть, но респаун спасает его!`);
+        await showRaceEvent("Джокер", `Кость: ${roll}. ${playerName(playerId)} должен был погибнуть, но респаун спасает его!`);
       } else {
         player.alive = false;
         player.eliminatedCause = { cause: "joker", causeBy: null };
         logEvent(`${playerName(playerId)} погиб: уничтожен Джокером`);
-        await showRaceEvent("Джокер", `${playerName(playerId)} бросает кость: ${roll} — уничтожен джокером!`);
+        await showExplosion(playerId);
+        await showRaceEvent("Джокер", `Кость: ${roll}. ${playerName(playerId)} уничтожен джокером!`);
       }
     } else {
-      await showRaceEvent("Джокер", `${playerName(playerId)} бросает кость: ${roll} — уцелел.`);
+      await showRaceEvent("Джокер", `Кость: ${roll}. ${playerName(playerId)} уцелел.`);
     }
     return;
   }
   logEvent(`${playerName(playerId)} подбирает лут: ${LOOT_NAMES[code]}`);
-  await showRaceEvent("Лут", `${playerName(playerId)} подбирает: ${LOOT_NAMES[code]}.`);
+  await showRaceEvent("Лут", `${playerName(playerId)} подбирает: ${LOOT_NAMES[code]}.`, "Продолжить", { iconSrc: LOOT_ICONS[code] || null });
 }
 
 function showShootAnimation(shooterId, targetId) {
@@ -297,7 +325,7 @@ function showShootAnimation(shooterId, targetId) {
   document.getElementById("shoot-overlay-text").textContent = `${playerName(shooterId)} стреляет в ${playerName(targetId)}`;
   overlay.classList.add("active");
   return new Promise((resolve) => {
-    setTimeout(() => { overlay.classList.remove("active"); resolve(); }, 2000);
+    setTimeout(() => { overlay.classList.remove("active"); resolve(); }, SHOOT_ANIM_MS);
   });
 }
 
@@ -328,6 +356,7 @@ async function performShoot(shooterId, targetId) {
       target.eliminatedCause = { cause: "gun", causeBy: shooterId };
       shooter.kills += 1;
       logEvent(`${playerName(targetId)} погиб: уничтожен пулемётом (${playerName(shooterId)})`);
+      await showExplosion(targetId);
       await showRaceEvent("Стрельба", `Кость: ${roll}. Броня пробита — ${playerName(targetId)} уничтожен пулемётом (${playerName(shooterId)}).`);
     }
   } else {
@@ -337,10 +366,19 @@ async function performShoot(shooterId, targetId) {
 }
 
 /* ---------- MODALS ---------- */
-function showRaceEvent(title, text, btnLabel) {
+function showRaceEvent(title, text, btnLabel, opts) {
+  opts = opts || {};
   return new Promise((resolve) => {
     document.getElementById("race-event-title").textContent = title;
     document.getElementById("race-event-text").textContent = text;
+    const icon = document.getElementById("race-event-icon");
+    if (opts.iconSrc) {
+      icon.src = opts.iconSrc;
+      icon.hidden = false;
+      icon.className = "race-event-icon" + (opts.glow ? " icon-glow-hazard" : "");
+    } else {
+      icon.hidden = true;
+    }
     const btn = document.getElementById("btn-race-event-ok");
     btn.textContent = btnLabel || "Продолжить";
     const overlay = document.getElementById("modal-race-event");
@@ -365,6 +403,35 @@ function waitForDiceRoll() {
     }
     btn.addEventListener("click", onClick);
   });
+}
+
+/* ---------- POSITIONAL FX (explosion / nitro puff) on the track ---------- */
+function spawnFxAtStep(step, className, durationMs) {
+  const overlay = document.getElementById("arena-overlay");
+  if (!overlay || !cellPx) return Promise.resolve();
+  const { xFrac, yFrac } = stepFrac(step);
+  const el = document.createElement("div");
+  el.className = className;
+  el.style.left = `${xFrac * 100}%`;
+  el.style.top = `${yFrac * 100}%`;
+  el.style.width = `${cellPx * 1.8}px`;
+  el.style.height = `${cellPx * 1.8}px`;
+  overlay.appendChild(el);
+  return new Promise((resolve) => setTimeout(() => { el.remove(); resolve(); }, durationMs));
+}
+function showExplosion(playerId) {
+  return spawnFxAtStep(physicalStepOf(race.players[playerId]), "fx-explosion", EXPLOSION_MS);
+}
+function showNitroExhaust(playerId) {
+  return spawnFxAtStep(physicalStepOf(race.players[playerId]), "fx-nitro", NITRO_FX_MS);
+}
+
+/* ---------- SHARED 50/50 HAZARD FLOW (Joker loot + the Skull) ---------- */
+async function resolveHazardRoll(playerId, hazardTitle, iconSrc, introText) {
+  await showRaceEvent(hazardTitle, introText, "Бросить кость", { iconSrc, glow: true });
+  const roll = randInt(1, 6);
+  await showDiceAnimation(roll);
+  return { roll, survived: roll % 2 === 0 };
 }
 
 /* ---------- RENDER (rectangular grid track) ---------- */
@@ -484,12 +551,12 @@ function showDiceAnimation(finalRoll) {
     const start = Date.now();
     const spin = setInterval(() => {
       face.textContent = faces[Math.floor(Math.random() * 6)];
-      if (Date.now() - start > 550) {
+      if (Date.now() - start > DICE_SPIN_TOTAL_MS) {
         clearInterval(spin);
         face.textContent = faces[finalRoll - 1];
-        setTimeout(() => { overlay.classList.remove("active"); resolve(); }, 500);
+        setTimeout(() => { overlay.classList.remove("active"); resolve(); }, DICE_SETTLE_MS);
       }
-    }, 70);
+    }, DICE_SPIN_TICK_MS);
   });
 }
 
@@ -601,6 +668,13 @@ function finishRace() {
 }
 
 /* ---------- SINGLE RACE SCREEN ---------- */
+function killWord(n) {
+  const mod10 = n % 10, mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "убийство";
+  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return "убийства";
+  return "убийств";
+}
+
 function renderRaceResultModal(results) {
   const list = document.getElementById("race-result-list");
   list.innerHTML = "";
@@ -612,11 +686,23 @@ function renderRaceResultModal(results) {
   sorted.forEach((r) => {
     const row = document.createElement("div");
     row.className = "race-result-row" + (r.eliminated ? " eliminated" : "");
+
+    const main = document.createElement("div");
+    main.className = "rr-main";
     const left = document.createElement("span");
     left.textContent = playerName(r.playerId);
     const right = document.createElement("span");
     right.textContent = r.eliminated ? causeLabel(r) : `${r.place}-е место · ${r.total} очк.`;
-    row.appendChild(left); row.appendChild(right);
+    main.appendChild(left); main.appendChild(right);
+    row.appendChild(main);
+
+    if (!r.eliminated && r.kills > 0) {
+      const breakdown = document.createElement("div");
+      breakdown.className = "rr-breakdown";
+      breakdown.textContent = `${r.placePoints} очков + ${r.kills} ${killWord(r.kills)} = ${r.total}`;
+      row.appendChild(breakdown);
+    }
+
     list.appendChild(row);
   });
   document.getElementById("modal-race-result").classList.add("active");
