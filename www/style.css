@@ -683,6 +683,25 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   0%, 100% { filter: drop-shadow(0 0 6px #ff4d4d); transform: scale(1); }
   50% { filter: drop-shadow(0 0 22px #ff4d4d); transform: scale(1.12); }
 }
+.race-event-highlight {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: -4px 0 12px;
+  text-shadow: 0 0 12px rgba(226, 121, 46, 0.5);
+}
+
+/* ---------- TOKEN DEATH FADE ---------- */
+.token-dying {
+  animation: token-die 0.8s ease forwards;
+  pointer-events: none;
+}
+@keyframes token-die {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(35deg); }
+}
 
 /* ---------- TRACK FX: explosion + nitro exhaust ---------- */
 .fx-explosion {

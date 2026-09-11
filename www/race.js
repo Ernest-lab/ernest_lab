@@ -265,6 +265,7 @@ async function playOneTurn(currentId) {
           race.players[race.skull.activatorId].kills += 1;
           race.skull.resolved = true;
           logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
+          fadeOutToken(currentId);
           await showExplosion(currentId);
           await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
           renderArena();
@@ -308,6 +309,7 @@ async function grantLoot(playerId, code) {
         player.alive = false;
         player.eliminatedCause = { cause: "joker", causeBy: null };
         logEvent(`${playerName(playerId)} погиб: уничтожен Джокером`);
+        fadeOutToken(playerId);
         await showExplosion(playerId);
         await showRaceEvent("Джокер", `Кость: ${roll}. ${playerName(playerId)} уничтожен джокером!`);
       }
@@ -317,7 +319,7 @@ async function grantLoot(playerId, code) {
     return;
   }
   logEvent(`${playerName(playerId)} подбирает лут: ${LOOT_NAMES[code]}`);
-  await showRaceEvent("Лут", `${playerName(playerId)} подбирает: ${LOOT_NAMES[code]}.`, "Продолжить", { iconSrc: LOOT_ICONS[code] || null });
+  await showRaceEvent("Лут", `${playerName(playerId)} подбирает:`, "Продолжить", { highlight: LOOT_NAMES[code] });
 }
 
 function showShootAnimation(shooterId, targetId) {
@@ -356,6 +358,7 @@ async function performShoot(shooterId, targetId) {
       target.eliminatedCause = { cause: "gun", causeBy: shooterId };
       shooter.kills += 1;
       logEvent(`${playerName(targetId)} погиб: уничтожен пулемётом (${playerName(shooterId)})`);
+      fadeOutToken(targetId);
       await showExplosion(targetId);
       await showRaceEvent("Стрельба", `Кость: ${roll}. Броня пробита — ${playerName(targetId)} уничтожен пулемётом (${playerName(shooterId)}).`);
     }
@@ -379,6 +382,14 @@ function showRaceEvent(title, text, btnLabel, opts) {
     } else {
       icon.style.display = "none";
       icon.removeAttribute("src");
+    }
+    const highlight = document.getElementById("race-event-highlight");
+    if (opts.highlight) {
+      highlight.textContent = opts.highlight;
+      highlight.style.display = "block";
+    } else {
+      highlight.style.display = "none";
+      highlight.textContent = "";
     }
     const btn = document.getElementById("btn-race-event-ok");
     btn.textContent = btnLabel || "Продолжить";
@@ -425,6 +436,10 @@ function showExplosion(playerId) {
 }
 function showNitroExhaust(playerId) {
   return spawnFxAtStep(physicalStepOf(race.players[playerId]), "fx-nitro", NITRO_FX_MS);
+}
+function fadeOutToken(playerId) {
+  const el = document.querySelector(`.arena-token[data-player-id="${playerId}"]`);
+  if (el) el.classList.add("token-dying");
 }
 
 /* ---------- SHARED 50/50 HAZARD FLOW (Joker loot + the Skull) ---------- */
@@ -578,8 +593,10 @@ function renderArena(currentTurnId) {
   overlay.querySelectorAll(".arena-token").forEach((el) => el.remove());
 
   // group players by physical step, front-of-queue (earliest arrival) sits ON the step
+  // eliminated players are excluded here — they fade out separately via fadeOutToken()
   const byStep = {};
   race.order.forEach((id) => {
+    if (!race.players[id].alive) return;
     const step = physicalStepOf(race.players[id]);
     (byStep[step] = byStep[step] || []).push(id);
   });
@@ -593,6 +610,7 @@ function renderArena(currentTurnId) {
     idsHere.forEach((id, queueIndex) => {
       const p = race.players[id];
       const token = document.createElement("div");
+      token.dataset.playerId = id;
       token.className = "arena-token" + (!p.alive ? " eliminated" : "") + (id === currentTurnId ? " current-turn" : "");
       const size = queueIndex === 0 ? cellPx : cellPx * 0.8;
       token.style.width = `${size}px`;
