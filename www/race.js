@@ -197,7 +197,7 @@ async function resolveSkullHazard(currentId, player) {
 
   const { roll: roll2, survived } = await resolveHazardRoll(
     currentId, "Череп!",
-    SKULL_ICON_URI,
+    null,
     `${playerName(currentId)} проезжает через активный череп. Шанс проехать — 50 на 50.`
   );
   if (survived) {
@@ -227,13 +227,15 @@ async function playOneTurn(currentId) {
     player.pendingGun = 0;
   }
   renderArena(currentId);
+  let firedThisTurn = false; // at most one shot per turn, even with a double gun
 
-  // mandatory shooting before the roll
-  let target = player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
-  while (target) {
+  // mandatory shooting before the roll — at most one shot here; a second charge
+  // (double gun) waits for the next opportunity rather than firing right away
+  const target = !firedThisTurn && player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
+  if (target) {
+    firedThisTurn = true;
     await performShoot(currentId, target);
-    if (!player.alive) return; // shouldn't happen (shooter isn't the target) but stay safe
-    target = player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
+    if (!player.alive) return;
   }
 
   document.getElementById("arena-turn-label").textContent = `Ход: ${playerName(currentId)}`;
@@ -288,11 +290,11 @@ async function playOneTurn(currentId) {
     if (!player.alive) { renderArena(); return; }
   }
 
-  // mandatory shooting after the move
-  let target2 = player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
-  while (target2) {
+  // mandatory shooting after the move — same rule, at most one shot per whole turn
+  const target2 = !firedThisTurn && player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
+  if (target2) {
+    firedThisTurn = true;
     await performShoot(currentId, target2);
-    target2 = player.alive && player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
   }
 
   renderArena();
