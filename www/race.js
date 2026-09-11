@@ -13,7 +13,7 @@
 
 const TRACK_STEPS = 54;
 const LAPS = 2;
-const TOTAL_DISTANCE = TRACK_STEPS * LAPS;
+const TOTAL_DISTANCE = TRACK_STEPS * LAPS + 1; // finish line sits one step past the 108th cell — reached at cell 109
 
 const LOOT_ICONS = {
   gun: "assets/icon-gun.png",
@@ -30,7 +30,7 @@ const CRATE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const SKULL_ICON_URI = "data:image/svg+xml;utf8," + encodeURIComponent(SKULL_SVG.replace(/currentColor/g, "#ff4d4d"));
 
 /* Timing — every animation is 2x slower than a "normal" pace, per request. */
-const STEP_ANIM_MS = 320;
+const STEP_ANIM_MS = 640;
 const DICE_SPIN_TICK_MS = 140;
 const DICE_SPIN_TOTAL_MS = 1100;
 const DICE_SETTLE_MS = 1000;
@@ -374,10 +374,11 @@ function showRaceEvent(title, text, btnLabel, opts) {
     const icon = document.getElementById("race-event-icon");
     if (opts.iconSrc) {
       icon.src = opts.iconSrc;
-      icon.hidden = false;
+      icon.style.display = "block";
       icon.className = "race-event-icon" + (opts.glow ? " icon-glow-hazard" : "");
     } else {
-      icon.hidden = true;
+      icon.style.display = "none";
+      icon.removeAttribute("src");
     }
     const btn = document.getElementById("btn-race-event-ok");
     btn.textContent = btnLabel || "Продолжить";
