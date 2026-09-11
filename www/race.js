@@ -179,6 +179,48 @@ function tryRespawnSave(player) {
   return false;
 }
 
+async function resolveSkullHazard(currentId, player) {
+  const step = physicalStepOf(player);
+  if (step !== race.skull.step || race.skull.resolved) return false;
+
+  if (!race.skull.active) {
+    race.skull.active = true;
+    race.skull.activatorId = currentId;
+    renderArena(currentId);
+    await showRaceEvent(
+      "Череп активирован!",
+      `${playerName(currentId)} проезжает через череп — он загорается красным и теперь опасен для всех, кто проедет по нему следующим.`,
+      "Понятно",
+      { iconSrc: SKULL_ICON_URI, glow: true }
+    );
+    return false;
+  }
+
+  const { roll: roll2, survived } = await resolveHazardRoll(
+    currentId, "Череп!",
+    SKULL_ICON_URI,
+    `${playerName(currentId)} проезжает через активный череп. Шанс проехать — 50 на 50.`
+  );
+  if (survived) {
+    await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} уцелел. Череп остаётся активным для следующих игроков.`);
+    return false;
+  }
+  if (tryRespawnSave(player)) {
+    await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} должен был погибнуть, но респаун спасает его!`);
+    return false;
+  }
+  player.alive = false;
+  player.eliminatedCause = { cause: "skull", causeBy: race.skull.activatorId };
+  race.players[race.skull.activatorId].kills += 1;
+  race.skull.resolved = true;
+  logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
+  fadeOutToken(currentId);
+  await showExplosion(currentId);
+  await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
+  renderArena();
+  return true;
+}
+
 async function playOneTurn(currentId) {
   const player = race.players[currentId];
   renderArena(currentId);
@@ -215,6 +257,11 @@ async function playOneTurn(currentId) {
     player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
     renderArena(currentId);
     await sleep(STEP_ANIM_MS);
+
+    if (player.pos < TOTAL_DISTANCE) {
+      const died = await resolveSkullHazard(currentId, player);
+      if (died) return;
+    }
   }
   player.arrivedTick = ++race.turnCounter;
   if (wasLap === 1 && player.lap === 2) logEvent(`${playerName(currentId)} проходит первый круг`);
@@ -223,58 +270,19 @@ async function playOneTurn(currentId) {
     player.finished = true;
     player.finishOrder = ++race.finishCounter;
     logEvent(`${playerName(currentId)} приходит к финишу — место ${player.finishOrder}`);
+    fadeOutFinishedToken(currentId);
+    await sleep(800);
     renderArena();
     return;
   }
 
-  const physicalStep = physicalStepOf(player);
-
-  // loot
-  if (race.lootBoard.has(physicalStep)) {
-    const code = race.lootBoard.get(physicalStep);
-    race.lootBoard.delete(physicalStep);
+  // loot — only if the player actually stops on this cell
+  const landedStep = physicalStepOf(player);
+  if (race.lootBoard.has(landedStep)) {
+    const code = race.lootBoard.get(landedStep);
+    race.lootBoard.delete(landedStep);
     await grantLoot(currentId, code);
     if (!player.alive) { renderArena(); return; }
-  }
-
-  // skull — first arrival lights it up (red, active); everyone after that
-  // must roll the same 50/50 hazard as the Joker until someone finally dies
-  if (physicalStep === race.skull.step && !race.skull.resolved) {
-    if (!race.skull.active) {
-      race.skull.active = true;
-      race.skull.activatorId = currentId;
-      renderArena(currentId);
-      await showRaceEvent(
-        "Череп активирован!",
-        `${playerName(currentId)} наезжает на череп — он загорается красным и теперь опасен для всех, кто проедет по нему следующим.`,
-        "Понятно",
-        { iconSrc: SKULL_ICON_URI, glow: true }
-      );
-    } else {
-      const { roll: roll2, survived } = await resolveHazardRoll(
-        currentId, "Череп!",
-        SKULL_ICON_URI,
-        `${playerName(currentId)} наезжает на активный череп. Шанс проехать — 50 на 50.`
-      );
-      if (!survived) {
-        if (tryRespawnSave(player)) {
-          await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} должен был погибнуть, но респаун спасает его!`);
-        } else {
-          player.alive = false;
-          player.eliminatedCause = { cause: "skull", causeBy: race.skull.activatorId };
-          race.players[race.skull.activatorId].kills += 1;
-          race.skull.resolved = true;
-          logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
-          fadeOutToken(currentId);
-          await showExplosion(currentId);
-          await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`);
-          renderArena();
-          return;
-        }
-      } else {
-        await showRaceEvent("Череп", `Кость: ${roll2}. ${playerName(currentId)} уцелел. Череп остаётся активным для следующих игроков.`);
-      }
-    }
   }
 
   // mandatory shooting after the move
@@ -441,6 +449,10 @@ function fadeOutToken(playerId) {
   const el = document.querySelector(`.arena-token[data-player-id="${playerId}"]`);
   if (el) el.classList.add("token-dying");
 }
+function fadeOutFinishedToken(playerId) {
+  const el = document.querySelector(`.arena-token[data-player-id="${playerId}"]`);
+  if (el) el.classList.add("token-finish-fx");
+}
 
 /* ---------- SHARED 50/50 HAZARD FLOW (Joker loot + the Skull) ---------- */
 async function resolveHazardRoll(playerId, hazardTitle, iconSrc, introText) {
@@ -596,7 +608,7 @@ function renderArena(currentTurnId) {
   // eliminated players are excluded here — they fade out separately via fadeOutToken()
   const byStep = {};
   race.order.forEach((id) => {
-    if (!race.players[id].alive) return;
+    if (!race.players[id].alive || race.players[id].finished) return;
     const step = physicalStepOf(race.players[id]);
     (byStep[step] = byStep[step] || []).push(id);
   });

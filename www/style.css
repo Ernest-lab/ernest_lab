@@ -702,6 +702,15 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   0% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(35deg); }
 }
+.token-finish-fx {
+  animation: token-finish 0.8s ease forwards;
+  pointer-events: none;
+}
+@keyframes token-finish {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: drop-shadow(0 0 0 rgba(226,121,46,0)); }
+  40% { opacity: 1; transform: translate(-50%, -50%) scale(1.35); filter: drop-shadow(0 0 14px rgba(226,121,46,0.9)); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.7); filter: drop-shadow(0 0 0 rgba(226,121,46,0)); }
+}
 
 /* ---------- TRACK FX: explosion + nitro exhaust ---------- */
 .fx-explosion {
