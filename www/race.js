@@ -69,6 +69,8 @@ function stepFrac(step) {
 
 let race = null; // current race state
 let raceResolve = null;
+let raceGeneration = 0;
+function isStale(gen) { return !race || race.gen !== gen; }
 
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
@@ -108,6 +110,7 @@ function runInteractiveRace(ids) {
     return Promise.resolve(null);
   }
   race = createRaceState(ids);
+  race.gen = ++raceGeneration;
   goToScreen("arena");
   document.getElementById("arena-log").innerHTML = "";
   trackBuilt = false;
@@ -134,22 +137,25 @@ function initArena() {
 function alivePlayers() { return race.order.filter((id) => race.players[id].alive && !race.players[id].finished); }
 
 async function runTurnLoop() {
-  while (race && alivePlayers().length > 0) {
+  const gen = race.gen;
+  while (race && race.gen === gen && alivePlayers().length > 0) {
     const currentId = nextTurnPlayer();
     if (!currentId) break;
     try {
-      await playOneTurn(currentId);
+      await playOneTurn(currentId, gen);
     } catch (err) {
       logEvent(`ОШИБКА в ходе ${playerName(currentId)}: ${err.message}`);
       console.error("playOneTurn error", err);
       // don't let one broken turn kill the whole race — force this player to
       // just keep their current spot and move on, so the loop can't silently stall
-      race.players[currentId].arrivedTick = ++race.turnCounter;
-      const btn = document.getElementById("btn-roll-dice");
-      if (btn) btn.disabled = true;
+      if (!isStale(gen)) {
+        race.players[currentId].arrivedTick = ++race.turnCounter;
+        const btn = document.getElementById("btn-roll-dice");
+        if (btn) btn.disabled = true;
+      }
     }
   }
-  if (race) finishRace();
+  if (!isStale(gen)) finishRace();
 }
 
 function nextTurnPlayer() {
@@ -195,7 +201,7 @@ function tryRespawnSave(player) {
   return false;
 }
 
-async function resolveSkullHazard(currentId, player) {
+async function resolveSkullHazard(currentId, player, gen) {
   const step = physicalStepOf(player);
   if (step !== race.skull.step || race.skull.resolved) return false;
 
@@ -210,12 +216,14 @@ async function resolveSkullHazard(currentId, player) {
     );
     return false;
   }
+  if (isStale(gen)) return true; // stop this turn from continuing on a dead race
 
   const { roll: roll2, survived } = await resolveHazardRoll(
     currentId, "Череп!",
     null,
     `${playerName(currentId)} проезжает через активный череп. Шанс проехать — 50 на 50.`
   );
+  if (isStale(gen)) return true;
   if (survived) {
     await showRaceEvent("Череп", `${playerName(currentId)} уцелел. Череп остаётся активным для следующих игроков.`, "Продолжить", { highlight: `🎲 ${roll2}` });
     return false;
@@ -231,12 +239,13 @@ async function resolveSkullHazard(currentId, player) {
   logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
   fadeOutToken(currentId);
   await showExplosion(currentId);
+  if (isStale(gen)) return true;
   await showRaceEvent("Череп", `${playerName(currentId)} погиб от черепа! Очко за убийство получает ${playerName(race.skull.activatorId)}.`, "Продолжить", { highlight: `🎲 ${roll2}` });
   renderArena();
   return true;
 }
 
-async function playOneTurn(currentId) {
+async function playOneTurn(currentId, gen) {
   const player = race.players[currentId];
   player.hasAppeared = true;
   document.getElementById("btn-roll-dice").disabled = true;
@@ -252,17 +261,18 @@ async function playOneTurn(currentId) {
   const target = !firedThisTurn && player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
   if (target) {
     firedThisTurn = true;
-    await performShoot(currentId, target);
-    if (!player.alive) return;
+    await performShoot(currentId, target, gen);
+    if (isStale(gen) || !player.alive) return;
   }
+  if (isStale(gen)) return;
 
   document.getElementById("arena-turn-label").textContent = `Ход: ${playerName(currentId)}`;
   await waitForDiceRoll();
-  if (!race || !player.alive) return;
+  if (isStale(gen) || !player.alive) return;
 
   let baseRoll = randInt(1, 6);
   await showDiceAnimation(baseRoll);
-  if (!race || !player.alive) return;
+  if (isStale(gen) || !player.alive) return;
 
   let roll = baseRoll;
   const nitroUsed = player.nitroPending;
@@ -271,6 +281,7 @@ async function playOneTurn(currentId) {
     player.nitroPending = false;
     logEvent(`${playerName(currentId)} применяет лут: Нитро — ход удвоен до ${roll}`);
     await showNitroExhaust(currentId);
+    if (isStale(gen)) return;
   }
 
   const wasLap = player.lap;
@@ -280,10 +291,11 @@ async function playOneTurn(currentId) {
     player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
     moveTokenSmoothly(currentId);
     await sleep(STEP_ANIM_MS);
+    if (isStale(gen)) return;
 
     if (player.pos < TOTAL_DISTANCE) {
-      const died = await resolveSkullHazard(currentId, player);
-      if (died) return;
+      const died = await resolveSkullHazard(currentId, player, gen);
+      if (died || isStale(gen)) return;
     }
   }
   player.arrivedTick = ++race.turnCounter;
@@ -295,6 +307,7 @@ async function playOneTurn(currentId) {
     logEvent(`${playerName(currentId)} приходит к финишу — место ${player.finishOrder}`);
     fadeOutFinishedToken(currentId);
     await sleep(800);
+    if (isStale(gen)) return;
     renderArena();
     return;
   }
@@ -304,7 +317,8 @@ async function playOneTurn(currentId) {
   if (race.lootBoard.has(landedStep)) {
     const code = race.lootBoard.get(landedStep);
     race.lootBoard.delete(landedStep);
-    await grantLoot(currentId, code);
+    await grantLoot(currentId, code, gen);
+    if (isStale(gen)) return;
     if (!player.alive) { renderArena(); return; }
   }
 
@@ -312,13 +326,14 @@ async function playOneTurn(currentId) {
   const target2 = !firedThisTurn && player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
   if (target2) {
     firedThisTurn = true;
-    await performShoot(currentId, target2);
+    await performShoot(currentId, target2, gen);
+    if (isStale(gen)) return;
   }
 
   renderArena();
 }
 
-async function grantLoot(playerId, code) {
+async function grantLoot(playerId, code, gen) {
   const player = race.players[playerId];
   if (code === "gun") { player.pendingGun += 1; player.lootHeld.push("gun"); }
   else if (code === "dgun") { player.pendingGun += 2; player.lootHeld.push("dgun"); }
@@ -333,6 +348,7 @@ async function grantLoot(playerId, code) {
       "assets/icon-joker.png",
       `${playerName(playerId)} поднимает джокера. Шанс уцелеть — 50 на 50.`
     );
+    if (isStale(gen)) return;
     if (!survived) {
       if (tryRespawnSave(player)) {
         await showRaceEvent("Джокер", `${playerName(playerId)} должен был погибнуть, но респаун спасает его!`, "Продолжить", { highlight: `🎲 ${roll}` });
@@ -342,6 +358,7 @@ async function grantLoot(playerId, code) {
         logEvent(`${playerName(playerId)} погиб: уничтожен Джокером`);
         fadeOutToken(playerId);
         await showExplosion(playerId);
+        if (isStale(gen)) return;
         await showRaceEvent("Джокер", `${playerName(playerId)} уничтожен джокером!`, "Продолжить", { highlight: `🎲 ${roll}` });
       }
     } else {
@@ -362,17 +379,20 @@ function showShootAnimation(shooterId, targetId) {
   });
 }
 
-async function performShoot(shooterId, targetId) {
+async function performShoot(shooterId, targetId, gen) {
   const shooter = race.players[shooterId];
   const target = race.players[targetId];
 
   logEvent(`${playerName(shooterId)} применяет лут: Пулемёт (стреляет в ${playerName(targetId)})`);
   await showShootAnimation(shooterId, targetId);
+  if (isStale(gen)) return;
 
   await showRaceEvent("Стрельба обязательна", `${playerName(shooterId)} видит ${playerName(targetId)} прямо впереди и обязан открыть огонь.`, "Стрелять");
+  if (isStale(gen)) return;
 
   const roll = randInt(1, 6);
   await showDiceAnimation(roll);
+  if (isStale(gen)) return;
 
   let penetrates;
   if (target.shieldCharges > 0) {
@@ -394,11 +414,13 @@ async function performShoot(shooterId, targetId) {
       logEvent(`${playerName(targetId)} погиб: уничтожен пулемётом (${playerName(shooterId)})`);
       fadeOutToken(targetId);
       await showExplosion(targetId);
+      if (isStale(gen)) return;
       await showRaceEvent("Стрельба", `Броня пробита — ${playerName(targetId)} уничтожен пулемётом (${playerName(shooterId)}).`, "Продолжить", { highlight: `🎲 ${roll}` });
     }
   } else {
     await showRaceEvent("Стрельба", `${playerName(targetId)} уцелел.`, "Продолжить", { highlight: `🎲 ${roll}` });
   }
+  if (isStale(gen)) return;
   renderArena();
 }
 
