@@ -30,7 +30,7 @@ const CRATE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const SKULL_ICON_URI = "data:image/svg+xml;utf8," + encodeURIComponent(SKULL_SVG.replace(/currentColor/g, "#ff4d4d"));
 
 /* Timing — every animation is 2x slower than a "normal" pace, per request. */
-const STEP_ANIM_MS = 640;
+const STEP_ANIM_MS = 900;
 const DICE_SPIN_TICK_MS = 140;
 const DICE_SPIN_TOTAL_MS = 1100;
 const DICE_SETTLE_MS = 1000;
@@ -488,8 +488,16 @@ let cellPx = 0;
 function sizeTrackBox() {
   const wrap = document.getElementById("arena-track-wrap");
   const box = document.getElementById("arena-track-box");
+  const screen = document.getElementById("screen-arena");
+  const header = screen.querySelector(".screen-header");
+  const standings = document.getElementById("arena-standings");
+  const footer = screen.querySelector(".arena-footer");
+  const MIN_LOG_HEIGHT = 110;
+
   const availW = wrap.clientWidth - 8;
-  const availH = wrap.clientHeight - 8;
+  const usedH = (header ? header.offsetHeight : 0) + (standings ? standings.offsetHeight : 0) + (footer ? footer.offsetHeight : 0) + MIN_LOG_HEIGHT;
+  const availH = screen.clientHeight - usedH - 8;
+
   const ratio = GRID_COLS / GRID_ROWS;
   let w = availW, h = w / ratio;
   if (h > availH) { h = availH; w = h * ratio; }
