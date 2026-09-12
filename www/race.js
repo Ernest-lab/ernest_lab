@@ -85,7 +85,7 @@ function createRaceState(ids) {
     playersState[id] = {
       id, pos: 0, lap: 1, alive: true, finished: false, finishOrder: null,
       lootHeld: [], gunCharges: 0, pendingGun: 0, shieldCharges: 0, nitroPending: false,
-      hasRespawn: false, kills: 0, eliminatedCause: null, arrivedTick: i,
+      hasRespawn: false, kills: 0, eliminatedCause: null, arrivedTick: i, hasAppeared: false,
     };
   });
 
@@ -137,7 +137,17 @@ async function runTurnLoop() {
   while (race && alivePlayers().length > 0) {
     const currentId = nextTurnPlayer();
     if (!currentId) break;
-    await playOneTurn(currentId);
+    try {
+      await playOneTurn(currentId);
+    } catch (err) {
+      logEvent(`ОШИБКА в ходе ${playerName(currentId)}: ${err.message}`);
+      console.error("playOneTurn error", err);
+      // don't let one broken turn kill the whole race — force this player to
+      // just keep their current spot and move on, so the loop can't silently stall
+      race.players[currentId].arrivedTick = ++race.turnCounter;
+      const btn = document.getElementById("btn-roll-dice");
+      if (btn) btn.disabled = true;
+    }
   }
   if (race) finishRace();
 }
@@ -228,6 +238,7 @@ async function resolveSkullHazard(currentId, player) {
 
 async function playOneTurn(currentId) {
   const player = race.players[currentId];
+  player.hasAppeared = true;
   document.getElementById("btn-roll-dice").disabled = true;
   if (player.pendingGun > 0) {
     player.gunCharges += player.pendingGun;
@@ -267,7 +278,7 @@ async function playOneTurn(currentId) {
   while (player.pos < targetPos) {
     player.pos += 1;
     player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
-    renderArena(currentId);
+    moveTokenSmoothly(currentId);
     await sleep(STEP_ANIM_MS);
 
     if (player.pos < TOTAL_DISTANCE) {
@@ -615,6 +626,16 @@ function showDiceAnimation(finalRoll) {
   });
 }
 
+function moveTokenSmoothly(playerId) {
+  const p = race.players[playerId];
+  const step = physicalStepOf(p);
+  const { xFrac, yFrac } = stepFrac(step);
+  const token = document.querySelector(`.arena-token[data-player-id="${playerId}"]`);
+  if (!token) { renderArena(playerId); return; }
+  token.style.left = `${xFrac * 100}%`;
+  token.style.top = `${yFrac * 100}%`;
+}
+
 function physicalStepOf(p) {
   if (p.finished) return TRACK_STEPS;
   if (p.pos <= 0) return 1;
@@ -635,7 +656,7 @@ function renderArena(currentTurnId) {
   // eliminated players are excluded here — they fade out separately via fadeOutToken()
   const byStep = {};
   race.order.forEach((id) => {
-    if (!race.players[id].alive || race.players[id].finished) return;
+    if (!race.players[id].alive || race.players[id].finished || !race.players[id].hasAppeared) return;
     const step = physicalStepOf(race.players[id]);
     (byStep[step] = byStep[step] || []).push(id);
   });
@@ -676,6 +697,7 @@ function renderArena(currentTurnId) {
       const lootEl = document.createElement("div");
       lootEl.className = "token-loot";
       if (p.gunCharges > 0) lootEl.appendChild(lootBadge(LOOT_ICONS.gun, p.gunCharges));
+      else if (p.pendingGun > 0) lootEl.appendChild(lootBadge(LOOT_ICONS.gun, p.pendingGun, true));
       if (p.shieldCharges > 0) lootEl.appendChild(lootBadge(LOOT_ICONS.shield, p.shieldCharges));
       if (p.nitroPending) lootEl.appendChild(textBadge("⚡"));
       if (p.hasRespawn) lootEl.appendChild(lootBadge(LOOT_ICONS.respawn, null));
@@ -699,8 +721,9 @@ function renderArena(currentTurnId) {
   });
 }
 
-function lootBadge(src, count) {
+function lootBadge(src, count, pending) {
   const wrap = document.createElement("span");
+  if (pending) wrap.classList.add("loot-pending");
   const img = document.createElement("img");
   img.src = src;
   wrap.appendChild(img);

@@ -572,6 +572,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   color: var(--text);
 }
 .arena-token .token-loot img { width: 9px; height: 9px; border: none; background: none; border-radius: 0; aspect-ratio: auto; }
+.arena-token .token-loot .loot-pending { opacity: 0.45; filter: grayscale(1); }
 .arena-token .token-status { font-size: 7px; color: var(--danger-bright); max-width: 90px; text-align: center; line-height: 1.1; background: rgba(10,9,8,0.85); border-radius: 2px; padding: 0 2px; }
 
 .arena-footer { padding: 14px 20px; border-top: 1px solid #1a1714; flex-shrink: 0; }
