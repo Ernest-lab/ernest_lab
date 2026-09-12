@@ -122,7 +122,36 @@ function initArena() {
       r(null);
     }
   });
+  document.getElementById("btn-cheat-finish").addEventListener("click", cheatFinishRace);
   window.addEventListener("resize", () => { if (race) renderArena(); });
+}
+
+/* TEST-ONLY: instantly resolve the current race (remove this button/function later) */
+function cheatFinishRace() {
+  if (!race || !raceResolve) return;
+  const remaining = race.order.filter((id) => race.players[id].alive && !race.players[id].finished);
+  remaining.sort((a, b) => race.players[b].pos - race.players[a].pos);
+  remaining.forEach((id) => {
+    const p = race.players[id];
+    p.finished = true;
+    p.finishOrder = ++race.finishCounter;
+  });
+  const results = race.order.map((id) => {
+    const p = race.players[id];
+    if (p.finished) {
+      const place = p.finishOrder;
+      const placePoints = Math.max(9 - place, 0);
+      return { playerId: id, eliminated: false, place, placePoints, kills: p.kills, total: placePoints + p.kills };
+    }
+    return { playerId: id, eliminated: true, cause: p.eliminatedCause.cause, causeBy: p.eliminatedCause.causeBy, kills: p.kills, total: p.kills };
+  });
+  const resolve = raceResolve;
+  const log = race.log || [];
+  race = null; raceResolve = null;
+  document.getElementById("modal-race-event").classList.remove("active");
+  document.getElementById("dice-overlay").classList.remove("active");
+  document.getElementById("shoot-overlay").classList.remove("active");
+  resolve({ results, log });
 }
 
 /* ---------- TURN LOOP ---------- */
@@ -161,6 +190,7 @@ function findAdjacentTarget(shooterId) {
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 function logEvent(text) {
+  if (race) { race.log = race.log || []; race.log.push(text); }
   const el = document.getElementById("arena-log");
   if (!el) return;
   const row = document.createElement("div");
@@ -701,9 +731,10 @@ function finishRace() {
     }
     return { playerId: id, eliminated: true, cause: p.eliminatedCause.cause, causeBy: p.eliminatedCause.causeBy, kills: p.kills, total: p.kills };
   });
+  const log = race.log || [];
   const resolve = raceResolve;
   race = null; raceResolve = null;
-  if (resolve) resolve(results);
+  if (resolve) resolve({ results, log });
 }
 
 /* ---------- SINGLE RACE SCREEN ---------- */
@@ -714,7 +745,36 @@ function killWord(n) {
   return "убийств";
 }
 
-function renderRaceResultModal(results) {
+let currentModalLog = [];
+
+function showLogModal(log) {
+  currentModalLog = log || [];
+  const content = document.getElementById("race-log-content");
+  content.innerHTML = "";
+  if (!currentModalLog.length) {
+    const empty = document.createElement("div");
+    empty.className = "placeholder-hint";
+    empty.textContent = "Событий не было.";
+    content.appendChild(empty);
+  } else {
+    currentModalLog.forEach((text) => {
+      const row = document.createElement("div");
+      row.className = "log-row";
+      row.textContent = text;
+      content.appendChild(row);
+    });
+  }
+  document.getElementById("modal-race-log").classList.add("active");
+}
+
+function initLogModal() {
+  document.getElementById("btn-close-race-log").addEventListener("click", () => {
+    document.getElementById("modal-race-log").classList.remove("active");
+  });
+}
+
+function renderRaceResultModal(results, log) {
+  currentModalLog = log || [];
   const list = document.getElementById("race-result-list");
   list.innerHTML = "";
   const sorted = results.slice().sort((a, b) => {
@@ -754,9 +814,9 @@ function initSingleRaceScreen() {
       initialIds: new Set(),
       min: 2, max: 8,
       onConfirm: async (ids) => {
-        const results = await runInteractiveRace(Array.from(ids));
+        const outcome = await runInteractiveRace(Array.from(ids));
         goToScreen("race");
-        if (results) renderRaceResultModal(results);
+        if (outcome) renderRaceResultModal(outcome.results, outcome.log);
       },
     });
   });
@@ -764,9 +824,13 @@ function initSingleRaceScreen() {
   document.getElementById("btn-close-race-result").addEventListener("click", () => {
     document.getElementById("modal-race-result").classList.remove("active");
   });
+  document.getElementById("btn-view-race-log").addEventListener("click", () => {
+    showLogModal(currentModalLog);
+  });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   initArena();
   initSingleRaceScreen();
+  initLogModal();
 });

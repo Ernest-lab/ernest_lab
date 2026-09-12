@@ -131,6 +131,9 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   border: 1px solid #100f0d;
   color: var(--accent);
   font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 4px rgba(0,0,0,0.5);
 }
 .icon-btn:active { filter: brightness(1.15); }
@@ -146,6 +149,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 5px rgba(0,0,0,0.45);
 }
 .primary-btn:active { filter: brightness(0.9); }
+.primary-btn[disabled] { background: #3a352e; color: var(--muted); border-color: #1a1714; box-shadow: none; cursor: not-allowed; }
 .primary-btn.full { width: 100%; margin-top: 18px; }
 
 .ghost-btn {
@@ -176,7 +180,8 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   overflow-y: auto;
   padding: 18px 20px 40px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, 150px);
+  justify-content: start;
   gap: 14px;
   align-content: start;
 }
@@ -353,7 +358,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 .tournament-card .t-status { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
 .picked-hint { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 0; }
-.ghost-btn.full { width: 100%; }
+.ghost-btn.full { width: 100%; margin-top: 12px; }
 
 .modal-card.wide { width: min(680px, 100%); max-height: 82vh; display: flex; flex-direction: column; }
 .picker-grid {
@@ -444,6 +449,10 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 .podium-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a1714; font-weight: 700; }
 .podium-row:last-child { border-bottom: none; }
 .podium-place { color: var(--accent); }
+
+.group-card-placeholder { opacity: 0.55; }
+.placeholder-hint { padding: 14px 12px; font-size: 12px; color: var(--muted); text-align: center; }
+.standings-scroll { max-height: 60vh; overflow-y: auto; }
 
 /* ---------- ARENA (interactive race — real rectangular grid track) ---------- */
 .arena-track-wrap {
@@ -752,5 +761,18 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 .race-result-row { padding: 8px 0; border-bottom: 1px solid #1a1714; font-size: 14px; }
 .race-result-row:last-child { border-bottom: none; }
 .race-result-row.eliminated { color: var(--danger-bright); }
-.rr-main { display: flex; justify-content: space-between; }
+.rr-main {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  align-items: start;
+}
+.rr-main span:first-child { text-align: left; }
+.rr-main span:last-child { text-align: right; }
 .rr-breakdown { margin-top: 3px; font-size: 11px; color: var(--muted); text-align: right; }
+
+/* Global safety net: [hidden] must always win over any class-based display
+   rule (grid/flex/block containers with a class that sets display were
+   silently ignoring their own hidden attribute — same footgun as the earlier
+   icon bug, fixed here once for the whole app instead of case by case). */
+[hidden] { display: none !important; }

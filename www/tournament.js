@@ -26,6 +26,33 @@ function chunk(arr, size) {
   return out;
 }
 
+/* Draw a second grouping of the same ids that shares as few groupmates as
+   possible with a reference grouping — tries a handful of random shuffles
+   and keeps the one with the lowest total overlap. */
+function countOverlap(referenceGroups, candidateGroups) {
+  const groupOf = {};
+  referenceGroups.forEach((g, gi) => g.forEach((id) => { groupOf[id] = gi; }));
+  let overlap = 0;
+  candidateGroups.forEach((g) => {
+    for (let i = 0; i < g.length; i++) {
+      for (let j = i + 1; j < g.length; j++) {
+        if (groupOf[g[i]] === groupOf[g[j]]) overlap++;
+      }
+    }
+  });
+  return overlap;
+}
+function drawMinimalOverlapGroups(allIds, groupSize, referenceGroups, attempts) {
+  let best = null, bestScore = Infinity;
+  for (let a = 0; a < (attempts || 25); a++) {
+    const groups = chunk(shuffle(allIds), groupSize);
+    const score = countOverlap(referenceGroups, groups);
+    if (score < bestScore) { bestScore = score; best = groups; }
+    if (bestScore === 0) break;
+  }
+  return best;
+}
+
 /* ---------- shared helpers ---------- */
 
 function causeLabel(r) {
@@ -62,6 +89,7 @@ function showTournamentListView() {
   document.getElementById("tournament-list-view").hidden = false;
   document.getElementById("tournament-bracket-view").hidden = true;
   document.getElementById("btn-open-create-tournament").hidden = false;
+  document.getElementById("btn-tournament-standings").hidden = true;
   document.getElementById("tournament-header-title").textContent = "Турнир";
   renderTournamentList();
 }
@@ -71,6 +99,7 @@ function openTournamentBracket(id) {
   document.getElementById("tournament-list-view").hidden = true;
   document.getElementById("tournament-bracket-view").hidden = false;
   document.getElementById("btn-open-create-tournament").hidden = true;
+  document.getElementById("btn-tournament-standings").hidden = false;
   const t = tournaments.find((x) => x.id === id);
   document.getElementById("tournament-header-title").textContent = t.name;
   renderBracket(t);
@@ -119,8 +148,9 @@ function initTournamentCreateModal() {
     if (tournamentPickedIds.size !== 48) { showToast("Выберите ровно 48 игроков"); ok = false; }
     if (!ok) return;
 
-    const ids = shuffle(Array.from(tournamentPickedIds));
-    const groups = chunk(ids, 8);
+    const ids = Array.from(tournamentPickedIds);
+    const stage1Groups = chunk(shuffle(ids), 8);
+    const stage2Groups = drawMinimalOverlapGroups(ids, 8, stage1Groups);
     const tournament = {
       id: "tr_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
       name,
@@ -128,9 +158,10 @@ function initTournamentCreateModal() {
       status: "round1",
       cumulativeKills: {},
       round1: {
-        groups,
-        stage1: groups.map(() => ({ results: null })),
-        stage2: groups.map(() => ({ results: null })),
+        stage1Groups,
+        stage2Groups,
+        stage1: stage1Groups.map(() => ({ results: null })),
+        stage2: stage2Groups.map(() => ({ results: null })),
       },
       round2: { groups: null, races: null },
       round3: { group: null, race: null },
@@ -149,7 +180,7 @@ function initTournamentCreateModal() {
 async function playRace(tournament, roundKey, stageKeyOrNull, groupIndex) {
   let ids, slot;
   if (roundKey === "round1") {
-    const groups = tournament.round1.groups;
+    const groups = stageKeyOrNull === "stage1" ? tournament.round1.stage1Groups : tournament.round1.stage2Groups;
     ids = groups[groupIndex];
     slot = tournament.round1[stageKeyOrNull][groupIndex];
   } else if (roundKey === "round2") {
@@ -160,13 +191,14 @@ async function playRace(tournament, roundKey, stageKeyOrNull, groupIndex) {
     slot = tournament.round3.race;
   }
 
-  const results = await runInteractiveRace(ids);
+  const outcome = await runInteractiveRace(ids);
   goToScreen("tournament");
   openTournamentBracket(tournament.id);
-  if (!results) return; // race was aborted — slot stays unplayed
+  if (!outcome) return; // race was aborted — slot stays unplayed
 
-  slot.results = results;
-  results.forEach((r) => {
+  slot.results = outcome.results;
+  slot.log = outcome.log;
+  outcome.results.forEach((r) => {
     if (r.kills > 0) tournament.cumulativeKills[r.playerId] = (tournament.cumulativeKills[r.playerId] || 0) + r.kills;
   });
 
@@ -177,10 +209,9 @@ async function playRace(tournament, roundKey, stageKeyOrNull, groupIndex) {
 }
 
 function sumPoints(...slots) {
-  // slots: arrays of {results}
   const totals = {};
   slots.forEach((slot) => {
-    if (!slot.results) return;
+    if (!slot || !slot.results) return;
     slot.results.forEach((r) => { totals[r.playerId] = (totals[r.playerId] || 0) + r.total; });
   });
   return totals;
@@ -192,7 +223,7 @@ function advanceIfReady(tournament) {
     const stage2Done = tournament.round1.stage2.every((s) => s.results);
     if (stage1Done && stage2Done) {
       const totals = sumPoints(...tournament.round1.stage1, ...tournament.round1.stage2);
-      const allIds = tournament.round1.groups.flat();
+      const allIds = tournament.round1.stage1Groups.flat();
       const ranked = allIds.slice().sort((a, b) => {
         const diff = (totals[b] || 0) - (totals[a] || 0);
         if (diff !== 0) return diff;
@@ -227,6 +258,45 @@ function advanceIfReady(tournament) {
   }
 }
 
+/* ---------- LIVE OVERALL STANDINGS (for the "Таблица" button) ---------- */
+function computeLiveOverallStandings(tournament) {
+  let ids, totals, qualifySlots;
+  if (tournament.status === "round1") {
+    ids = tournament.round1.stage1Groups.flat();
+    totals = sumPoints(...tournament.round1.stage1, ...tournament.round1.stage2);
+    qualifySlots = 24;
+  } else if (tournament.status === "round2") {
+    ids = tournament.round2.groups.flat();
+    totals = sumPoints(...tournament.round2.races);
+    qualifySlots = 8;
+  } else {
+    ids = tournament.round3.group || [];
+    totals = sumPoints(tournament.round3.race);
+    qualifySlots = ids.length;
+  }
+  const standings = ids.slice().sort((a, b) => {
+    const diff = (totals[b] || 0) - (totals[a] || 0);
+    if (diff !== 0) return diff;
+    return (tournament.cumulativeKills[b] || 0) - (tournament.cumulativeKills[a] || 0);
+  }).map((id) => ({ id, points: totals[id] || 0, kills: tournament.cumulativeKills[id] || 0 }));
+  return { standings, qualifySlots };
+}
+
+function initTournamentStandingsModal() {
+  document.getElementById("btn-tournament-standings").addEventListener("click", () => {
+    const t = tournaments.find((x) => x.id === currentTournamentId);
+    if (!t) return;
+    const { standings, qualifySlots } = computeLiveOverallStandings(t);
+    const content = document.getElementById("tournament-standings-content");
+    content.innerHTML = "";
+    content.appendChild(renderStandingsTable("Текущий зачёт", standings, qualifySlots));
+    document.getElementById("modal-tournament-standings").classList.add("active");
+  });
+  document.getElementById("btn-close-tournament-standings").addEventListener("click", () => {
+    document.getElementById("modal-tournament-standings").classList.remove("active");
+  });
+}
+
 /* ---------- RENDERING ---------- */
 function renderPlayerRow(id, result) {
   const row = document.createElement("div");
@@ -249,7 +319,7 @@ function renderPlayerRow(id, result) {
   return row;
 }
 
-function renderGroupCard(title, ids, slot, onPlay) {
+function renderGroupCard(title, ids, slot, onPlay, lockedHint) {
   const card = document.createElement("div");
   card.className = "group-card";
   const header = document.createElement("div");
@@ -265,10 +335,35 @@ function renderGroupCard(title, ids, slot, onPlay) {
   if (!slot.results) {
     const btn = document.createElement("button");
     btn.className = "primary-btn btn-play-group";
-    btn.textContent = "Играть";
-    btn.addEventListener("click", onPlay);
+    if (lockedHint) {
+      btn.textContent = lockedHint;
+      btn.disabled = true;
+    } else {
+      btn.textContent = "Играть";
+      btn.addEventListener("click", onPlay);
+    }
     card.appendChild(btn);
+  } else {
+    const logBtn = document.createElement("button");
+    logBtn.className = "ghost-btn btn-play-group";
+    logBtn.textContent = "Лог";
+    logBtn.addEventListener("click", () => showLogModal(slot.log));
+    card.appendChild(logBtn);
   }
+  return card;
+}
+
+function renderPlaceholderGroupCard(title) {
+  const card = document.createElement("div");
+  card.className = "group-card group-card-placeholder";
+  const header = document.createElement("div");
+  header.className = "group-card-header";
+  header.textContent = title;
+  card.appendChild(header);
+  const hint = document.createElement("div");
+  hint.className = "placeholder-hint";
+  hint.textContent = "Заполнится автоматически по итогам предыдущего тура";
+  card.appendChild(hint);
   return card;
 }
 
@@ -307,70 +402,84 @@ function renderStandingsTable(title, standings, qualifySlots) {
 function renderBracket(tournament) {
   const root = document.getElementById("tournament-bracket-view");
   root.innerHTML = "";
+  const stage1Done = tournament.round1.stage1.every((s) => s.results);
 
-  // ---- Round 1 ----
+  // ---- Round 1 · Stage 1 ----
   const r1title = document.createElement("div");
   r1title.className = "round-title";
-  r1title.textContent = "Тур 1 · 6 групп по 8 игроков";
+  r1title.textContent = "Тур 1 · Этап 1 · 6 групп по 8 игроков";
   root.appendChild(r1title);
 
-  ["stage1", "stage2"].forEach((stageKey, stageIdx) => {
-    if (stageKey === "stage2" && !tournament.round1.stage1.every((s) => s.results)) return; // locked
-    const st = document.createElement("div");
-    st.className = "stage-title";
-    st.textContent = stageIdx === 0 ? "Этап 1" : "Этап 2";
-    root.appendChild(st);
-
-    const row = document.createElement("div");
-    row.className = "groups-row";
-    tournament.round1.groups.forEach((ids, gi) => {
-      const slot = tournament.round1[stageKey][gi];
-      const card = renderGroupCard(`Группа ${gi + 1}`, ids, slot, () => playRace(tournament, "round1", stageKey, gi));
-      row.appendChild(card);
-    });
-    root.appendChild(row);
+  const stage1Row = document.createElement("div");
+  stage1Row.className = "groups-row";
+  tournament.round1.stage1Groups.forEach((ids, gi) => {
+    const slot = tournament.round1.stage1[gi];
+    stage1Row.appendChild(renderGroupCard(`Группа ${gi + 1}`, ids, slot, () => playRace(tournament, "round1", "stage1", gi)));
   });
+  root.appendChild(stage1Row);
+
+  // ---- Round 1 · Stage 2 (always visible, locked until stage 1 is fully played) ----
+  const stage2Title = document.createElement("div");
+  stage2Title.className = "round-title";
+  stage2Title.textContent = "Тур 1 · Этап 2 · 6 групп по 8 игроков";
+  root.appendChild(stage2Title);
+
+  const stage2Row = document.createElement("div");
+  stage2Row.className = "groups-row";
+  tournament.round1.stage2Groups.forEach((ids, gi) => {
+    const slot = tournament.round1.stage2[gi];
+    const lockedHint = stage1Done ? null : "Сначала завершите этап 1";
+    stage2Row.appendChild(renderGroupCard(`Группа ${gi + 1}`, ids, slot, () => playRace(tournament, "round1", "stage2", gi), lockedHint));
+  });
+  root.appendChild(stage2Row);
 
   if (tournament.round1standings) {
     root.appendChild(renderStandingsTable("Общий зачёт тура 1 (топ-24 проходят дальше)", tournament.round1standings, 24));
   }
 
-  // ---- Round 2 ----
-  if (tournament.round2.groups) {
-    const r2title = document.createElement("div");
-    r2title.className = "round-title";
-    r2title.textContent = "Тур 2 · 3 группы по 8 игроков";
-    root.appendChild(r2title);
+  // ---- Round 2 (always visible; placeholders until round 1 fully resolves) ----
+  const r2title = document.createElement("div");
+  r2title.className = "round-title";
+  r2title.textContent = "Тур 2 · 3 группы по 8 игроков";
+  root.appendChild(r2title);
 
-    const row = document.createElement("div");
-    row.className = "groups-row";
+  const r2Row = document.createElement("div");
+  r2Row.className = "groups-row";
+  if (tournament.round2.groups) {
     tournament.round2.groups.forEach((ids, gi) => {
       const slot = tournament.round2.races[gi];
-      const card = renderGroupCard(`Группа ${gi + 1}`, ids, slot, () => playRace(tournament, "round2", null, gi));
-      row.appendChild(card);
+      r2Row.appendChild(renderGroupCard(`Группа ${gi + 1}`, ids, slot, () => playRace(tournament, "round2", null, gi)));
     });
-    root.appendChild(row);
+  } else {
+    for (let gi = 0; gi < 3; gi++) r2Row.appendChild(renderPlaceholderGroupCard(`Группа ${gi + 1}`));
+  }
+  root.appendChild(r2Row);
 
-    if (tournament.round2standings) {
-      root.appendChild(renderStandingsTable("Общий зачёт тура 2 (топ-8 проходят в финал)", tournament.round2standings, 8));
-    }
+  if (tournament.round2standings) {
+    root.appendChild(renderStandingsTable("Общий зачёт тура 2 (топ-8 проходят в финал)", tournament.round2standings, 8));
   }
 
-  // ---- Round 3 ----
+  // ---- Round 3 · Final (always visible) ----
+  const r3title = document.createElement("div");
+  r3title.className = "round-title";
+  r3title.textContent = "Тур 3 · Финал (8 игроков)";
+  root.appendChild(r3title);
+
+  const r3Row = document.createElement("div");
+  r3Row.className = "groups-row";
   if (tournament.round3.group) {
-    const r3title = document.createElement("div");
-    r3title.className = "round-title";
-    r3title.textContent = "Тур 3 · Финал (8 игроков)";
-    root.appendChild(r3title);
-
-    const row = document.createElement("div");
-    row.className = "groups-row";
-    const card = renderGroupCard("Финальная группа", tournament.round3.group, tournament.round3.race, () => playRace(tournament, "round3", null, 0));
-    row.appendChild(card);
-    root.appendChild(row);
+    r3Row.appendChild(renderGroupCard("Финальная группа", tournament.round3.group, tournament.round3.race, () => playRace(tournament, "round3", null, 0)));
+  } else {
+    r3Row.appendChild(renderPlaceholderGroupCard("Финальная группа"));
   }
+  root.appendChild(r3Row);
 
-  // ---- Podium ----
+  // ---- Podium (always visible) ----
+  const podiumTitle = document.createElement("div");
+  podiumTitle.className = "round-title";
+  podiumTitle.textContent = "Призовые места";
+  root.appendChild(podiumTitle);
+
   if (tournament.status === "complete") {
     const finalResults = tournament.round3.race.results.slice().sort((a, b) => {
       const pa = a.eliminated ? 99 : a.place;
@@ -397,12 +506,18 @@ function renderBracket(tournament) {
       podium.appendChild(row);
     }
     root.appendChild(podium);
+  } else {
+    const placeholder = document.createElement("div");
+    placeholder.className = "podium placeholder-hint";
+    placeholder.textContent = "Появится после финальной гонки";
+    root.appendChild(placeholder);
   }
 }
 
 /* ---------- BOOT ---------- */
 async function tournamentBoot() {
   initTournamentCreateModal();
+  initTournamentStandingsModal();
   tournaments = await dbGetAll("tournaments");
 
   document.getElementById("btn-tournament-back").addEventListener("click", () => {

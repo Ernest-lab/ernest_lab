@@ -38,6 +38,7 @@
       <button class="icon-btn" data-nav="menu" aria-label="Назад">←</button>
       <h2>Создать игрока</h2>
       <button class="primary-btn" id="btn-open-create-player">+ Создать игрока</button>
+      <button class="ghost-btn" id="btn-create-test-players" title="Для тестирования, потом удалить">+ 48 тестовых</button>
     </header>
     <div class="cards-scroll" id="players-grid">
       <p class="empty-hint" id="players-empty-hint">Пока нет ни одного игрока. Нажмите «Создать игрока».</p>
@@ -49,6 +50,7 @@
     <header class="screen-header">
       <button class="icon-btn" id="btn-tournament-back" aria-label="Назад">←</button>
       <h2 id="tournament-header-title">Турнир</h2>
+      <button class="ghost-btn" id="btn-tournament-standings" hidden>Таблица</button>
       <button class="primary-btn" id="btn-open-create-tournament">+ Создать турнир</button>
     </header>
 
@@ -76,6 +78,7 @@
     <header class="screen-header">
       <button class="icon-btn" id="btn-arena-exit" aria-label="Выйти">←</button>
       <h2>Гонка · 2 круга</h2>
+      <button class="ghost-btn" id="btn-cheat-finish" title="Тест: сразу к результату">Результат</button>
     </header>
     <div class="arena-standings" id="arena-standings"></div>
     <div class="arena-track-wrap" id="arena-track-wrap">
@@ -114,6 +117,16 @@
       <button class="modal-close" id="btn-close-race-result" aria-label="Закрыть">✕</button>
       <h3>Результат гонки</h3>
       <div id="race-result-list"></div>
+      <button class="ghost-btn full" id="btn-view-race-log">Лог гонки</button>
+    </div>
+  </div>
+
+  <!-- ===== RACE LOG MODAL ===== -->
+  <div class="modal-overlay" id="modal-race-log">
+    <div class="modal-card wide">
+      <button class="modal-close" id="btn-close-race-log" aria-label="Закрыть">✕</button>
+      <h3>Лог гонки</h3>
+      <div id="race-log-content" class="standings-scroll"></div>
     </div>
   </div>
 
@@ -164,6 +177,15 @@
       <div class="cards-scroll picker-grid" id="pick-players-grid"></div>
       <p class="picked-hint" id="pick-players-count">0/48</p>
       <button class="primary-btn full" id="btn-confirm-pick-players" disabled>Подтвердить</button>
+    </div>
+  </div>
+
+  <!-- ===== TOURNAMENT STANDINGS MODAL ===== -->
+  <div class="modal-overlay" id="modal-tournament-standings">
+    <div class="modal-card wide">
+      <button class="modal-close" id="btn-close-tournament-standings" aria-label="Закрыть">✕</button>
+      <h3>Общий зачёт турнира</h3>
+      <div id="tournament-standings-content" class="standings-scroll"></div>
     </div>
   </div>
 

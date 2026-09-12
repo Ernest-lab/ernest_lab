@@ -356,6 +356,40 @@ function classifyStandingPoints(points, allPointsDesc, qualifySlots) {
 }
 
 /* =========================================================
+   TEST-ONLY: bulk-create 48 placeholder players (remove this button/
+   function later — it exists purely to speed up tournament testing).
+   ========================================================= */
+function generateTestAvatarBlob(label, hue) {
+  return new Promise((resolve, reject) => {
+    const size = 240;
+    const canvas = document.createElement("canvas");
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = `hsl(${hue}, 55%, 35%)`;
+    ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#f2ece0";
+    ctx.font = "bold 96px -apple-system, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, size / 2, size / 2 + 6);
+    canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error("toBlob failed")); }, "image/jpeg", 0.85);
+  });
+}
+
+async function createTestPlayers() {
+  const confirmed = await askConfirm("Создать 48 тестовых игроков со случайными аватарками? (для проверки турнира, удаляются вручную как обычные игроки)");
+  if (!confirmed) return;
+  for (let i = 1; i <= 48; i++) {
+    const blob = await generateTestAvatarBlob(String(i), (i * 37) % 360);
+    const p = { id: "p_test_" + Date.now() + "_" + i + "_" + Math.random().toString(36).slice(2, 6), name: `Тест ${i}`, photoBlob: blob };
+    players.push(p);
+    await dbPut("players", p);
+  }
+  refreshMenuState();
+  renderPlayersGrid();
+  showToast("Создано 48 тестовых игроков");
+}
+
+/* =========================================================
    BOOT
    ========================================================= */
 async function boot() {
@@ -364,6 +398,7 @@ async function boot() {
   players = await dbGetAll("players");
   refreshMenuState();
   renderPlayersGrid();
+  document.getElementById("btn-create-test-players").addEventListener("click", createTestPlayers);
 }
 
 document.addEventListener("DOMContentLoaded", boot);
