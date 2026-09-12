@@ -632,8 +632,26 @@ function moveTokenSmoothly(playerId) {
   const { xFrac, yFrac } = stepFrac(step);
   const token = document.querySelector(`.arena-token[data-player-id="${playerId}"]`);
   if (!token) { renderArena(playerId); return; }
-  token.style.left = `${xFrac * 100}%`;
-  token.style.top = `${yFrac * 100}%`;
+
+  // count other appeared/alive/unfinished players already sitting on this exact
+  // step, so the moving token offsets beside them instead of overlapping exactly
+  let occupantsHere = 0;
+  race.order.forEach((id) => {
+    if (id === playerId) return;
+    const q = race.players[id];
+    if (!q.alive || q.finished || !q.hasAppeared) return;
+    if (physicalStepOf(q) === step) occupantsHere++;
+  });
+
+  if (occupantsHere > 0) {
+    const [ox, oy] = SIDE_OFFSET[sideOfStep(step)];
+    const offsetCells = 0.62 * occupantsHere;
+    token.style.left = `${xFrac * 100 + (ox * offsetCells * 100) / GRID_COLS}%`;
+    token.style.top = `${yFrac * 100 + (oy * offsetCells * 100) / GRID_ROWS}%`;
+  } else {
+    token.style.left = `${xFrac * 100}%`;
+    token.style.top = `${yFrac * 100}%`;
+  }
 }
 
 function physicalStepOf(p) {
@@ -688,11 +706,6 @@ function renderArena(currentTurnId) {
       lapEl.className = "token-lap";
       lapEl.textContent = race.order.indexOf(id) + 1;
       token.appendChild(lapEl);
-
-      const nameEl = document.createElement("div");
-      nameEl.className = "token-name";
-      nameEl.textContent = playerName(id);
-      token.appendChild(nameEl);
 
       const lootEl = document.createElement("div");
       lootEl.className = "token-loot";
