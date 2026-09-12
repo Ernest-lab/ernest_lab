@@ -201,8 +201,8 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   text-align: left;
 }
 .player-card img {
-  width: 100%;
-  aspect-ratio: 1 / 1;
+  width: 150px;
+  height: 150px;
   object-fit: cover;
   display: block;
   background: var(--surface-2);
@@ -280,6 +280,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 }
 .modal-card.small { width: min(320px, 100%); text-align: center; max-height: 85vh; overflow-y: auto; }
 .modal-card h3 { margin: 0 0 18px; font-size: 17px; }
+#race-event-title { color: var(--accent); text-shadow: 0 0 10px rgba(226, 121, 46, 0.6); }
 .modal-close {
   position: absolute;
   top: 14px; right: 14px;
@@ -774,5 +775,8 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 /* Global safety net: [hidden] must always win over any class-based display
    rule (grid/flex/block containers with a class that sets display were
    silently ignoring their own hidden attribute — same footgun as the earlier
-   icon bug, fixed here once for the whole app instead of case by case). */
-[hidden] { display: none !important; }
+   icon bug, fixed here once for the whole app instead of case by case).
+   Doubled selector raises specificity above a single class rule WITHOUT
+   !important, so JS that explicitly sets element.style.display still wins
+   when it needs to (e.g. showing/hiding the race-event icon). */
+[hidden][hidden] { display: none; }
