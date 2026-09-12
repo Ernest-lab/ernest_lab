@@ -345,11 +345,12 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 
 /* ---------- TOURNAMENT LIST ---------- */
 .tournament-card {
+  position: relative;
   background: var(--surface);
   border: 1px solid #1a1714;
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
-  padding: 16px 18px;
+  padding: 16px 40px 16px 18px;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;

@@ -77,9 +77,17 @@ function renderTournamentList() {
       round3: "Тур 3 в процессе",
       complete: "Завершён",
     }[t.status] || t.status;
-    card.innerHTML = `<div><div class="t-name"></div><div class="t-status">${statusLabel}</div></div><span class="icon-btn" style="pointer-events:none">→</span>`;
+    card.innerHTML = `<div><div class="t-name"></div><div class="t-status">${statusLabel}</div></div><button class="card-remove" aria-label="Удалить">✕</button>`;
     card.querySelector(".t-name").textContent = t.name;
     card.addEventListener("click", () => openTournamentBracket(t.id));
+    card.querySelector(".card-remove").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const confirmed = await askConfirm(`Удалить турнир «${t.name}»? Это действие необратимо.`);
+      if (!confirmed) return;
+      tournaments = tournaments.filter((x) => x.id !== t.id);
+      await dbDelete("tournaments", t.id);
+      renderTournamentList();
+    });
     grid.appendChild(card);
   }
 }

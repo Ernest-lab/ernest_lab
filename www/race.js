@@ -103,6 +103,10 @@ function createRaceState(ids) {
 
 /* ---------- PUBLIC ENTRY POINT ---------- */
 function runInteractiveRace(ids) {
+  if (race) {
+    showToast("Гонка уже идёт — подождите, пока она закончится");
+    return Promise.resolve(null);
+  }
   race = createRaceState(ids);
   goToScreen("arena");
   document.getElementById("arena-log").innerHTML = "";
@@ -122,153 +126,9 @@ function initArena() {
       r(null);
     }
   });
-  document.getElementById("btn-cheat-finish").addEventListener("click", cheatFinishRace);
   window.addEventListener("resize", () => { if (race) renderArena(); });
 }
 
-/* TEST-ONLY: instantly resolve the current race (remove this button/function later).
-   Runs the SAME rules as a real race (loot, shooting, skull, joker, respawn) —
-   just without animations or waiting for taps — instead of just assigning places. */
-function cheatFinishRace() {
-  if (!race || !raceResolve) return;
-  document.getElementById("modal-race-event").classList.remove("active");
-  document.getElementById("dice-overlay").classList.remove("active");
-  document.getElementById("shoot-overlay").classList.remove("active");
-
-  let guard = 0;
-  while (race && alivePlayers().length > 0 && guard < 3000) {
-    const id = nextTurnPlayer();
-    if (!id) break;
-    simulateTurnSilently(id);
-    guard++;
-  }
-  if (race) finishRace();
-}
-
-function simulateTurnSilently(currentId) {
-  const player = race.players[currentId];
-  if (player.pendingGun > 0) {
-    player.gunCharges += player.pendingGun;
-    player.pendingGun = 0;
-  }
-  let firedThisTurn = false;
-
-  const target = player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
-  if (target) {
-    firedThisTurn = true;
-    silentShoot(currentId, target);
-    if (!player.alive) return;
-  }
-
-  const baseRoll = randInt(1, 6);
-  let roll = baseRoll;
-  if (player.nitroPending) {
-    roll *= 2;
-    player.nitroPending = false;
-    logEvent(`${playerName(currentId)} применяет лут: Нитро — ход удвоен до ${roll}`);
-  }
-
-  const wasLap = player.lap;
-  const targetPos = Math.min(player.pos + roll, TOTAL_DISTANCE);
-  while (player.pos < targetPos) {
-    player.pos += 1;
-    player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
-    if (player.pos < TOTAL_DISTANCE) {
-      const died = silentSkullCheck(currentId, player);
-      if (died) return;
-    }
-  }
-  player.arrivedTick = ++race.turnCounter;
-  if (wasLap === 1 && player.lap === 2) logEvent(`${playerName(currentId)} проходит первый круг`);
-
-  if (targetPos >= TOTAL_DISTANCE) {
-    player.finished = true;
-    player.finishOrder = ++race.finishCounter;
-    logEvent(`${playerName(currentId)} приходит к финишу — место ${player.finishOrder}`);
-    return;
-  }
-
-  const landedStep = physicalStepOf(player);
-  if (race.lootBoard.has(landedStep)) {
-    const code = race.lootBoard.get(landedStep);
-    race.lootBoard.delete(landedStep);
-    silentGrantLoot(currentId, code);
-    if (!player.alive) return;
-  }
-
-  if (!firedThisTurn) {
-    const target2 = player.gunCharges > 0 ? findAdjacentTarget(currentId) : null;
-    if (target2) silentShoot(currentId, target2);
-  }
-}
-
-function silentShoot(shooterId, targetId) {
-  const shooter = race.players[shooterId];
-  const target = race.players[targetId];
-  logEvent(`${playerName(shooterId)} применяет лут: Пулемёт (стреляет в ${playerName(targetId)})`);
-  const roll = randInt(1, 6);
-  let penetrates;
-  if (target.shieldCharges > 0) {
-    penetrates = roll === 1 || roll === 6;
-    target.shieldCharges -= 1;
-    logEvent(`${playerName(targetId)} применяет лут: Щит`);
-  } else {
-    penetrates = roll % 2 !== 0;
-  }
-  shooter.gunCharges -= 1;
-  if (penetrates) {
-    if (!tryRespawnSave(target)) {
-      target.alive = false;
-      target.eliminatedCause = { cause: "gun", causeBy: shooterId };
-      shooter.kills += 1;
-      logEvent(`${playerName(targetId)} погиб: уничтожен пулемётом (${playerName(shooterId)})`);
-    }
-  }
-}
-
-function silentGrantLoot(playerId, code) {
-  const player = race.players[playerId];
-  if (code === "gun") { player.pendingGun += 1; }
-  else if (code === "dgun") { player.pendingGun += 2; }
-  else if (code === "shield") { player.shieldCharges += 1; }
-  else if (code === "dshield") { player.shieldCharges += 2; }
-  else if (code === "nitro") { player.nitroPending = true; }
-  else if (code === "respawn") { player.hasRespawn = true; }
-  else if (code === "joker") {
-    logEvent(`${playerName(playerId)} подбирает лут: Джокер`);
-    const roll = randInt(1, 6);
-    if (roll % 2 !== 0 && !tryRespawnSave(player)) {
-      player.alive = false;
-      player.eliminatedCause = { cause: "joker", causeBy: null };
-      logEvent(`${playerName(playerId)} погиб: уничтожен Джокером`);
-    }
-    return;
-  }
-  logEvent(`${playerName(playerId)} подбирает лут: ${LOOT_NAMES[code]}`);
-}
-
-function silentSkullCheck(currentId, player) {
-  const step = physicalStepOf(player);
-  if (step !== race.skull.step || race.skull.resolved) return false;
-  if (!race.skull.active) {
-    race.skull.active = true;
-    race.skull.activatorId = currentId;
-    logEvent(`${playerName(currentId)} проезжает через череп — активирует его`);
-    return false;
-  }
-  const roll = randInt(1, 6);
-  if (roll % 2 === 0) {
-    logEvent(`${playerName(currentId)} проезжает активный череп и уцелел (кость ${roll})`);
-    return false;
-  }
-  if (tryRespawnSave(player)) return false;
-  player.alive = false;
-  player.eliminatedCause = { cause: "skull", causeBy: race.skull.activatorId };
-  race.players[race.skull.activatorId].kills += 1;
-  race.skull.resolved = true;
-  logEvent(`${playerName(currentId)} погиб: уничтожен черепом (${playerName(race.skull.activatorId)})`);
-  return true;
-}
 
 /* ---------- TURN LOOP ---------- */
 function alivePlayers() { return race.order.filter((id) => race.players[id].alive && !race.players[id].finished); }
@@ -368,6 +228,7 @@ async function resolveSkullHazard(currentId, player) {
 
 async function playOneTurn(currentId) {
   const player = race.players[currentId];
+  document.getElementById("btn-roll-dice").disabled = true;
   if (player.pendingGun > 0) {
     player.gunCharges += player.pendingGun;
     player.pendingGun = 0;
@@ -934,7 +795,7 @@ function initSingleRaceScreen() {
       initialIds: new Set(),
       min: 2, max: 8,
       onConfirm: async (ids) => {
-        const outcome = await runInteractiveRace(Array.from(ids));
+        const outcome = await runInteractiveRace(shuffle(Array.from(ids)));
         goToScreen("race");
         if (outcome) renderRaceResultModal(outcome.results, outcome.log);
       },
