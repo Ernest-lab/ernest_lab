@@ -469,7 +469,7 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 4px;
+  padding: 4px 4px 26px 4px;
 }
 .arena-track-box {
   position: relative;

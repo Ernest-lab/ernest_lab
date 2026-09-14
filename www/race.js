@@ -525,11 +525,11 @@ function sizeTrackBox() {
   const header = screen.querySelector(".screen-header");
   const standings = document.getElementById("arena-standings");
   const footer = screen.querySelector(".arena-footer");
-  const MIN_LOG_HEIGHT = 140;
+  const MIN_LOG_HEIGHT = 110;
 
   const availW = wrap.clientWidth - 8;
   const usedH = (header ? header.offsetHeight : 0) + (standings ? standings.offsetHeight : 0) + (footer ? footer.offsetHeight : 0) + MIN_LOG_HEIGHT;
-  const availH = screen.clientHeight - usedH - 8;
+  const availH = screen.clientHeight - usedH - 30; // -30 accounts for the wrap's extra bottom padding
 
   const ratio = GRID_COLS / GRID_ROWS;
   let w = availW, h = w / ratio;
