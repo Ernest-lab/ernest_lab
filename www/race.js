@@ -421,7 +421,7 @@ async function performShoot(shooterId, targetId, gen) {
     await showRaceEvent("Стрельба", `${playerName(targetId)} уцелел.`, "Продолжить", { highlight: `🎲 ${roll}` });
   }
   if (isStale(gen)) return;
-  renderArena();
+  renderArena(shooterId);
 }
 
 /* ---------- MODALS ---------- */
@@ -525,7 +525,7 @@ function sizeTrackBox() {
   const header = screen.querySelector(".screen-header");
   const standings = document.getElementById("arena-standings");
   const footer = screen.querySelector(".arena-footer");
-  const MIN_LOG_HEIGHT = 110;
+  const MIN_LOG_HEIGHT = 140;
 
   const availW = wrap.clientWidth - 8;
   const usedH = (header ? header.offsetHeight : 0) + (standings ? standings.offsetHeight : 0) + (footer ? footer.offsetHeight : 0) + MIN_LOG_HEIGHT;
