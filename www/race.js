@@ -75,18 +75,19 @@ function isStale(gen) { return !race || race.gen !== gen; }
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
 /* ---------- SETUP ---------- */
-function createRaceState(ids) {
+function createRaceState(ids, nitroStartIds) {
   const lootPool = ["gun", "gun", "dgun", "dgun", "shield", "shield", "dshield", "dshield", "nitro", "nitro", "respawn", "joker"];
   const usableSteps = shuffle(Array.from({ length: TRACK_STEPS - 10 }, (_, i) => i + 4)); // steps 4..63
   const lootBoard = new Map();
   lootPool.forEach((code, i) => lootBoard.set(usableSteps[i], code));
   const skullStep = TRACK_STEPS - 6; // fixed, near the end of the lap, always visible
+  const nitroSet = new Set(nitroStartIds || []);
 
   const playersState = {};
   ids.forEach((id, i) => {
     playersState[id] = {
       id, pos: 0, lap: 1, alive: true, finished: false, finishOrder: null,
-      lootHeld: [], gunCharges: 0, pendingGun: 0, shieldCharges: 0, nitroPending: false,
+      lootHeld: [], gunCharges: 0, pendingGun: 0, shieldCharges: 0, nitroPending: nitroSet.has(id),
       hasRespawn: false, kills: 0, eliminatedCause: null, arrivedTick: i, hasAppeared: false,
     };
   });
@@ -104,17 +105,20 @@ function createRaceState(ids) {
 }
 
 /* ---------- PUBLIC ENTRY POINT ---------- */
-function runInteractiveRace(ids) {
+function runInteractiveRace(ids, nitroStartIds) {
   if (race) {
     showToast("Гонка уже идёт — подождите, пока она закончится");
     return Promise.resolve(null);
   }
-  race = createRaceState(ids);
+  race = createRaceState(ids, nitroStartIds);
   race.gen = ++raceGeneration;
   goToScreen("arena");
   document.getElementById("arena-log").innerHTML = "";
   trackBuilt = false;
   renderArena();
+  (nitroStartIds || []).forEach((id) => {
+    if (race.players[id]) logEvent(`${playerName(id)} начинает с нитро (победа в прошлой гонке)`);
+  });
   return new Promise((resolve) => {
     raceResolve = resolve;
     runTurnLoop();
@@ -861,9 +865,14 @@ function initSingleRaceScreen() {
       initialIds: new Set(),
       min: 2, max: 8,
       onConfirm: async (ids) => {
-        const outcome = await runInteractiveRace(shuffle(Array.from(ids)));
-        goToScreen("race");
-        if (outcome) renderRaceResultModal(outcome.results, outcome.log);
+        const finalIds = shuffle(Array.from(ids));
+        if (finalIds.length === 8) {
+          showRaceIntroScreen(finalIds);
+        } else {
+          const outcome = await runInteractiveRace(finalIds);
+          goToScreen("race");
+          if (outcome) renderRaceResultModal(outcome.results, outcome.log);
+        }
       },
     });
   });
@@ -873,6 +882,83 @@ function initSingleRaceScreen() {
   });
   document.getElementById("btn-view-race-log").addEventListener("click", () => {
     showLogModal(currentModalLog);
+  });
+
+  document.getElementById("btn-race-intro-back").addEventListener("click", () => {
+    goToScreen("race");
+  });
+  document.getElementById("btn-race-intro-start").addEventListener("click", async () => {
+    const ids = introRaceIds;
+    if (!ids) return;
+    const outcome = await runInteractiveRace(ids);
+    goToScreen("race");
+    if (outcome) renderRaceResultModal(outcome.results, outcome.log);
+  });
+}
+
+/* ---------- 8-PLAYER BRACKET INTRO (single race only) ---------- */
+let introRaceIds = null;
+
+function showRaceIntroScreen(ids) {
+  introRaceIds = ids;
+  goToScreen("race-intro");
+  buildBracketIntro(ids);
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  return el;
+}
+
+function buildBracketIntro(ids) {
+  const W = 1000, H = 600;
+  const ys = [80, 220, 380, 520];
+  const leftX = 60, rightX = 940;
+
+  const svg = document.getElementById("intro-bracket-svg");
+  svg.innerHTML = "";
+  const line = (x1, y1, x2, y2) => svg.appendChild(svgEl("line", { x1, y1, x2, y2, class: "intro-bracket-line" }));
+
+  function drawSide(mirror) {
+    const mx = (x) => (mirror ? W - x : x);
+    line(mx(100), ys[0], mx(180), ys[0]);
+    line(mx(100), ys[1], mx(180), ys[1]);
+    line(mx(180), ys[0], mx(180), ys[1]);
+    line(mx(180), 150, mx(260), 150);
+
+    line(mx(100), ys[2], mx(180), ys[2]);
+    line(mx(100), ys[3], mx(180), ys[3]);
+    line(mx(180), ys[2], mx(180), ys[3]);
+    line(mx(180), 450, mx(260), 450);
+
+    line(mx(260), 150, mx(260), 450);
+    line(mx(260), 300, mx(420), 300);
+  }
+  drawSide(false);
+  drawSide(true);
+
+  const trackCX = 500, trackTop = 60, trackBottom = 540, r = 70;
+  const d = `M ${trackCX - r} ${trackTop + r} A ${r} ${r} 0 0 1 ${trackCX + r} ${trackTop + r} L ${trackCX + r} ${trackBottom - r} A ${r} ${r} 0 0 1 ${trackCX - r} ${trackBottom - r} Z`;
+  svg.appendChild(svgEl("path", { d, class: "intro-track-outline" }));
+
+  const positions = [
+    { x: leftX, y: ys[0] }, { x: leftX, y: ys[1] }, { x: leftX, y: ys[2] }, { x: leftX, y: ys[3] },
+    { x: rightX, y: ys[0] }, { x: rightX, y: ys[1] }, { x: rightX, y: ys[2] }, { x: rightX, y: ys[3] },
+  ];
+  const slots = document.getElementById("intro-slots");
+  slots.innerHTML = "";
+  ids.forEach((id, i) => {
+    const pos = positions[i];
+    const el = document.createElement("div");
+    el.className = "intro-slot";
+    el.style.left = `${(pos.x / W) * 100}%`;
+    el.style.top = `${(pos.y / H) * 100}%`;
+    const img = document.createElement("img");
+    const pl = findPlayer(id);
+    if (pl) img.src = playerPhotoUrl(pl);
+    el.appendChild(img);
+    slots.appendChild(el);
   });
 }
 

@@ -787,3 +787,21 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
    !important, so JS that explicitly sets element.style.display still wins
    when it needs to (e.g. showing/hiding the race-event icon). */
 [hidden][hidden] { display: none; }
+
+/* ---------- 8-PLAYER BRACKET INTRO SCREEN (single race only) ---------- */
+.intro-bracket-wrap { position: relative; flex: 1; overflow: hidden; background: #0c0b0a; }
+.intro-bracket-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.intro-bracket-line { stroke: var(--accent); stroke-width: 2; opacity: 0.85; }
+.intro-track-outline { fill: none; stroke: #55504a; stroke-width: 16; stroke-dasharray: 12 10; }
+#intro-slots { position: absolute; inset: 0; }
+.intro-slot {
+  position: absolute;
+  width: 64px; height: 64px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: 0 0 10px rgba(226,121,46,0.5), 0 2px 6px rgba(0,0,0,0.6);
+}
+.intro-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }

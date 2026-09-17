@@ -84,7 +84,7 @@ function showToast(message) {
 /* =========================================================
    NAVIGATION
    ========================================================= */
-const SCREEN_IDS = ["menu", "create-player", "tournament", "race", "arena"];
+const SCREEN_IDS = ["menu", "create-player", "tournament", "race", "race-intro", "arena"];
 
 function goToScreen(name) {
   SCREEN_IDS.forEach((id) => {
