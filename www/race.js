@@ -12,7 +12,8 @@
    ========================================================= */
 
 const TRACK_STEPS = 54;
-const DEFAULT_LAPS = 2;
+const LAPS = 2;
+const TOTAL_DISTANCE = TRACK_STEPS * LAPS + 1; // finish line sits one step past the 108th cell — reached at cell 109
 
 const LOOT_ICONS = {
   gun: "assets/icon-gun.png",
@@ -74,14 +75,13 @@ function isStale(gen) { return !race || race.gen !== gen; }
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
 /* ---------- SETUP ---------- */
-function createRaceState(ids, nitroStartIds, laps) {
+function createRaceState(ids, nitroStartIds) {
   const lootPool = ["gun", "gun", "dgun", "dgun", "shield", "shield", "dshield", "dshield", "nitro", "nitro", "respawn", "joker"];
   const usableSteps = shuffle(Array.from({ length: TRACK_STEPS - 10 }, (_, i) => i + 4)); // steps 4..63
   const lootBoard = new Map();
   lootPool.forEach((code, i) => lootBoard.set(usableSteps[i], code));
   const skullStep = TRACK_STEPS - 6; // fixed, near the end of the lap, always visible
   const nitroSet = new Set(nitroStartIds || []);
-  const lapsCount = laps || DEFAULT_LAPS;
 
   const playersState = {};
   ids.forEach((id, i) => {
@@ -98,8 +98,6 @@ function createRaceState(ids, nitroStartIds, laps) {
     turnIndex: 0,
     turnCounter: ids.length,
     finishCounter: 0,
-    laps: lapsCount,
-    totalDistance: TRACK_STEPS * lapsCount + 1,
     lootBoard,
     skull: { step: skullStep, active: false, resolved: false, activatorId: null },
     players: playersState,
@@ -107,18 +105,16 @@ function createRaceState(ids, nitroStartIds, laps) {
 }
 
 /* ---------- PUBLIC ENTRY POINT ---------- */
-function runInteractiveRace(ids, nitroStartIds, laps) {
+function runInteractiveRace(ids, nitroStartIds) {
   if (race) {
     showToast("Гонка уже идёт — подождите, пока она закончится");
     return Promise.resolve(null);
   }
-  race = createRaceState(ids, nitroStartIds, laps);
+  race = createRaceState(ids, nitroStartIds);
   race.gen = ++raceGeneration;
   goToScreen("arena");
   document.getElementById("arena-log").innerHTML = "";
   trackBuilt = false;
-  const titleEl = document.querySelector("#screen-arena .screen-header h2");
-  if (titleEl) titleEl.textContent = race.laps === 1 ? "Гонка · 1 круг" : `Гонка · ${race.laps} круга`;
   renderArena();
   (nitroStartIds || []).forEach((id) => {
     if (race.players[id]) logEvent(`${playerName(id)} начинает с нитро (победа в прошлой гонке)`);
@@ -295,15 +291,15 @@ async function playOneTurn(currentId, gen) {
   }
 
   const wasLap = player.lap;
-  const targetPos = Math.min(player.pos + roll, race.totalDistance);
+  const targetPos = Math.min(player.pos + roll, TOTAL_DISTANCE);
   while (player.pos < targetPos) {
     player.pos += 1;
-    player.lap = player.pos >= race.totalDistance ? race.laps : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
+    player.lap = player.pos >= TOTAL_DISTANCE ? LAPS : Math.floor((player.pos - 1) / TRACK_STEPS) + 1;
     moveTokenSmoothly(currentId);
     await sleep(STEP_ANIM_MS);
     if (isStale(gen)) return;
 
-    if (player.pos < race.totalDistance) {
+    if (player.pos < TOTAL_DISTANCE) {
       const died = await resolveSkullHazard(currentId, player, gen);
       if (died || isStale(gen)) return;
     }
@@ -311,7 +307,7 @@ async function playOneTurn(currentId, gen) {
   player.arrivedTick = ++race.turnCounter;
   if (wasLap === 1 && player.lap === 2) logEvent(`${playerName(currentId)} проходит первый круг`);
 
-  if (targetPos >= race.totalDistance) {
+  if (targetPos >= TOTAL_DISTANCE) {
     player.finished = true;
     player.finishOrder = ++race.finishCounter;
     logEvent(`${playerName(currentId)} приходит к финишу — место ${player.finishOrder}`);
@@ -632,7 +628,7 @@ function renderStandings() {
     name.textContent = playerName(id);
     const sub = document.createElement("div");
     sub.className = "s-sub";
-    sub.textContent = p.finished ? `Финиш ${p.finishOrder}` : !p.alive ? "Выбыл" : `${p.pos}/${race.totalDistance}`;
+    sub.textContent = p.finished ? `Финиш ${p.finishOrder}` : !p.alive ? "Выбыл" : `${p.pos}/${TOTAL_DISTANCE}`;
     info.appendChild(name); info.appendChild(sub);
 
     card.appendChild(rank); card.appendChild(img); card.appendChild(info);

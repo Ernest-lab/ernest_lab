@@ -806,9 +806,6 @@ h1, h2, h3, .menu-btn-label, .primary-btn, .danger-btn {
 }
 .intro-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.tiebreak-panel { max-width: 480px; margin: 0 0 20px; border-color: var(--danger-bright); }
-.tiebreak-panel .group-card-header { color: var(--danger-bright); }
-
 .intro-heading {
   position: absolute;
   top: 14px; left: 0; right: 0;

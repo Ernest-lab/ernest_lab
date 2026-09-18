@@ -233,39 +233,6 @@ function sumPoints(...slots) {
   return totals;
 }
 
-/* Finds a real contest at the qualification cutoff: multiple players tied on
-   both points and kills, with fewer remaining slots than tied candidates. */
-function detectBoundaryTie(ranked, totals, kills, qualifySlots) {
-  if (ranked.length <= qualifySlots) return null;
-  const boundaryId = ranked[qualifySlots - 1];
-  const bp = totals[boundaryId] || 0, bk = kills[boundaryId] || 0;
-  const tiedGroup = ranked.filter((id) => (totals[id] || 0) === bp && (kills[id] || 0) === bk);
-  if (tiedGroup.length <= 1) return null;
-  const definiteQualifiers = ranked.filter((id) => {
-    const p = totals[id] || 0, k = kills[id] || 0;
-    return p > bp || (p === bp && k > bk);
-  });
-  const remainingSlots = qualifySlots - definiteQualifiers.length;
-  if (remainingSlots >= tiedGroup.length) return null; // tie exists but everyone tied still fits
-  return { tiedGroup, remainingSlots, definiteQualifiers };
-}
-
-function finalizeRound2(tournament, qualifiers) {
-  tournament.round2.groups = chunk(shuffle(qualifiers), 8);
-  tournament.round2.races = tournament.round2.groups.map(() => ({ results: null }));
-  tournament.nitroBonusForRound2 = tournament.round1.stage2.flatMap((s) => s.results.filter((r) => !r.eliminated && r.place === 1).map((r) => r.playerId));
-  tournament.tiebreak = null;
-  tournament.status = "round2";
-}
-
-function finalizeRound3(tournament, qualifiers) {
-  tournament.round3.group = shuffle(qualifiers);
-  tournament.round3.race = { results: null };
-  tournament.nitroBonusForRound3 = tournament.round2.races.flatMap((s) => s.results.filter((r) => !r.eliminated && r.place === 1).map((r) => r.playerId));
-  tournament.tiebreak = null;
-  tournament.status = "round3";
-}
-
 function advanceIfReady(tournament) {
   if (tournament.status === "round1") {
     const stage1Done = tournament.round1.stage1.every((s) => s.results);
@@ -279,14 +246,11 @@ function advanceIfReady(tournament) {
         return (tournament.cumulativeKills[b] || 0) - (tournament.cumulativeKills[a] || 0);
       });
       tournament.round1standings = ranked.map((id) => ({ id, points: totals[id] || 0, kills: tournament.cumulativeKills[id] || 0 }));
-
-      const tie = detectBoundaryTie(ranked, totals, tournament.cumulativeKills, 24);
-      if (tie) {
-        tournament.tiebreak = { forTransition: "round2", candidates: tie.tiedGroup, remainingSlots: tie.remainingSlots, definiteQualifiers: tie.definiteQualifiers };
-        tournament.status = "tiebreak";
-      } else {
-        finalizeRound2(tournament, ranked.slice(0, 24));
-      }
+      const top24 = ranked.slice(0, 24);
+      tournament.round2.groups = chunk(shuffle(top24), 8);
+      tournament.round2.races = tournament.round2.groups.map(() => ({ results: null }));
+      tournament.nitroBonusForRound2 = tournament.round1.stage2.flatMap((s) => s.results.filter((r) => !r.eliminated && r.place === 1).map((r) => r.playerId));
+      tournament.status = "round2";
     }
   } else if (tournament.status === "round2") {
     const done = tournament.round2.races.every((s) => s.results);
@@ -299,43 +263,17 @@ function advanceIfReady(tournament) {
         return (tournament.cumulativeKills[b] || 0) - (tournament.cumulativeKills[a] || 0);
       });
       tournament.round2standings = ranked.map((id) => ({ id, points: totals[id] || 0, kills: tournament.cumulativeKills[id] || 0 }));
-
-      const tie = detectBoundaryTie(ranked, totals, tournament.cumulativeKills, 8);
-      if (tie) {
-        tournament.tiebreak = { forTransition: "round3", candidates: tie.tiedGroup, remainingSlots: tie.remainingSlots, definiteQualifiers: tie.definiteQualifiers };
-        tournament.status = "tiebreak";
-      } else {
-        finalizeRound3(tournament, ranked.slice(0, 8));
-      }
+      const top8 = ranked.slice(0, 8);
+      tournament.round3.group = shuffle(top8);
+      tournament.round3.race = { results: null };
+      tournament.nitroBonusForRound3 = tournament.round2.races.flatMap((s) => s.results.filter((r) => !r.eliminated && r.place === 1).map((r) => r.playerId));
+      tournament.status = "round3";
     }
   } else if (tournament.status === "round3") {
     if (tournament.round3.race.results) {
       tournament.status = "complete";
     }
   }
-}
-
-async function playTiebreakRace(tournament) {
-  const tb = tournament.tiebreak;
-  if (!tb) return;
-  const outcome = await runInteractiveRace(tb.candidates, [], 1); // 1-lap tiebreaker
-  goToScreen("tournament");
-  openTournamentBracket(tournament.id);
-  if (!outcome) return; // aborted — stay in tiebreak state, they can retry
-
-  const survivors = outcome.results
-    .filter((r) => !r.eliminated)
-    .sort((a, b) => a.place - b.place)
-    .map((r) => r.playerId);
-  const advancing = survivors.slice(0, tb.remainingSlots);
-  const qualifiers = tb.definiteQualifiers.concat(advancing);
-
-  if (tb.forTransition === "round2") finalizeRound2(tournament, qualifiers);
-  else finalizeRound3(tournament, qualifiers);
-
-  await dbPut("tournaments", tournament);
-  renderBracket(tournament);
-  renderTournamentList();
 }
 
 /* ---------- LIVE OVERALL STANDINGS (for the "Таблица" button) ---------- */
@@ -483,25 +421,6 @@ function renderBracket(tournament) {
   const root = document.getElementById("tournament-bracket-view");
   root.innerHTML = "";
   const stage1Done = tournament.round1.stage1.every((s) => s.results);
-
-  if (tournament.status === "tiebreak" && tournament.tiebreak) {
-    const tb = tournament.tiebreak;
-    const panel = document.createElement("div");
-    panel.className = "group-card tiebreak-panel";
-    const label = tb.forTransition === "round2" ? "Тур 2" : "Финал";
-    panel.innerHTML = `<div class="group-card-header">Ничья за выход в ${label} — нужна доп. гонка (1 круг)</div>`;
-    const hint = document.createElement("div");
-    hint.className = "placeholder-hint";
-    hint.textContent = `Разыгрывается ${tb.remainingSlots} мест(о) между ${tb.candidates.length} игроками с равными очками и убийствами:`;
-    panel.appendChild(hint);
-    tb.candidates.forEach((id) => panel.appendChild(renderPlayerRow(id, null)));
-    const btn = document.createElement("button");
-    btn.className = "primary-btn btn-play-group";
-    btn.textContent = "Играть доп. гонку";
-    btn.addEventListener("click", () => playTiebreakRace(tournament));
-    panel.appendChild(btn);
-    root.appendChild(panel);
-  }
 
   // ---- Round 1 · Stage 1 ----
   const r1title = document.createElement("div");
