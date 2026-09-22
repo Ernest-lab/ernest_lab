@@ -509,7 +509,7 @@ function renderBracket(tournament) {
       const pb = b.eliminated ? 99 : b.place;
       return pa - pb;
     });
-    const bestKillerId = Object.entries(tournament.cumulativeKills).sort((a, b) => b[1] - a[1])[0];
+    const killEntries = Object.entries(tournament.cumulativeKills);
 
     const podium = document.createElement("div");
     podium.className = "podium";
@@ -521,11 +521,13 @@ function renderBracket(tournament) {
       row.querySelector("span:last-child").textContent = playerName(r.playerId);
       podium.appendChild(row);
     });
-    if (bestKillerId) {
+    if (killEntries.length) {
+      const maxKills = Math.max(...killEntries.map(([, k]) => k));
+      const bestKillers = killEntries.filter(([, k]) => k === maxKills).map(([id]) => id);
       const row = document.createElement("div");
       row.className = "podium-row";
       row.innerHTML = `<span class="podium-place">Лучший киллер</span><span></span>`;
-      row.querySelector("span:last-child").textContent = `${playerName(bestKillerId[0])} (${bestKillerId[1]})`;
+      row.querySelector("span:last-child").textContent = `${bestKillers.map((id) => playerName(id)).join(", ")} (${maxKills})`;
       podium.appendChild(row);
     }
     root.appendChild(podium);

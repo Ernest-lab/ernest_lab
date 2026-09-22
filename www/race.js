@@ -175,12 +175,15 @@ function nextTurnPlayer() {
 
 function findAdjacentTarget(shooterId) {
   const shooter = race.players[shooterId];
+  let target = null;
   for (const id of race.order) {
     if (id === shooterId) continue;
     const p = race.players[id];
-    if (p.alive && !p.finished && p.pos === shooter.pos + 1) return id;
+    if (p.alive && !p.finished && p.pos === shooter.pos + 1) {
+      if (!target || p.arrivedTick > race.players[target].arrivedTick) target = id;
+    }
   }
-  return null;
+  return target;
 }
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
